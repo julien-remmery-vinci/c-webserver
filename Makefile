@@ -1,4 +1,4 @@
-PROJECT_NAME = template # Change by yours
+PROJECT_NAME = server # Change by yours
 
 # Compiler and flags
 CC = gcc

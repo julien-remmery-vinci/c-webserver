@@ -1,0 +1,7 @@
+@baseUrl=http://localhost:3000
+
+### Read one user
+GET {{ baseUrl }}/
+
+### Read one user
+GET {{ baseUrl }}/test
