@@ -19,11 +19,8 @@ int rrequest(int fd, char* buf) {
     return ret;
 }
 
-int sresponse(int fd, char* fmt, ...) {
-    va_list args;
-    va_start(args, fmt);
-    vdprintf(fd, fmt, args);
-    va_end(args);
+int sresponse(int fd, Response* res) {
+    write(fd, res->header, strlen(res->header));
     return 0;
 }
 
@@ -43,12 +40,14 @@ int parse_request(Request* req, char* reqstr) {
     }
 
     req->path = path;
-    req->version = version;
+    req->http_version = version;
     return 0;
 }
 
 void log_request(Request* req) {
-    INFO("%s %s", strmethod(req->method), req->path);
+    // Time from start of request processing to its end in milliseconds
+    double req_time_ms = (double)((req->stop.tv_sec - req->start.tv_sec) * 1000000 + req->stop.tv_usec - req->start.tv_usec)/1000;
+    INFO("%8.3f ms %-3d %-6s %s", req_time_ms, req->response.status, strmethod(req->method), req->path);
 }
 
 int build_response(Request* req) {
@@ -58,13 +57,8 @@ int build_response(Request* req) {
 int send_file(Request* req, char* filepath) {
     int filefd = open(filepath, O_RDONLY);
     if(filefd == -1) {
-        sresponse(req->client_fd, HTTP_HEADER_INTERNAL_SERVER_ERROR);
+        sresponse(req->client_fd, &HTTP_RES_INTERNAL_SERVER_ERROR);
         return 0;
-    }
-    if(req->response->status == HTTP_NOT_FOUND) {
-        sresponse(req->client_fd, HTTP_HEADER_NOT_FOUND);
-    } else {
-        sresponse(req->client_fd, HTTP_HEADER_OK);
     }
     off_t offset = 0;
     struct stat stat_buf;

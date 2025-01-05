@@ -25,16 +25,15 @@ int add_route(Router* router, Route* route) {
 int handle_request(Router* router, Request* req) {
     for (size_t i = 0; i < router->nb_routes; i++)
     {
-        if(strcmp(router->routes[i].path, req->path) == 0) {
-            req->response->status = HTTP_OK;
-            if(router->routes[i].handler(req) == -1) {
-                
-            }
-            return 0;
+        Route route = router->routes[i];
+        if(strcmp(route.path, req->path) == 0
+            && route.method == req->method) {
+            return route.handler(&route, req);
         }
     }
     
-    req->response->status = HTTP_NOT_FOUND;
+    req->response.status = HTTP_NOT_FOUND;
+    sresponse(req->client_fd, &HTTP_RES_NOT_FOUND);
     send_file(req, "static/not_found.html");
     return 0;
 }

@@ -14,6 +14,17 @@
 #define HTTP_HEADER_NOT_IMPLEMENTED "HTTP/1.1 501 Not Implemented\n\n"
 #define HTTP_HEADER_MALFORMED "HTTP/1.1 400 Bad Request\n\nMalformed headers in the request."
 
+#define HTTP_RES_OK \
+    (Response) { .status = HTTP_OK, .header = HTTP_HEADER_OK }
+#define HTTP_RES_HEADER_MALFORMED \
+    (Response) { .status = HTTP_BAD_REQUEST, .header = HTTP_HEADER_MALFORMED }
+#define HTTP_RES_NOT_FOUND \
+    (Response) { .status = HTTP_NOT_FOUND, .header = HTTP_HEADER_NOT_FOUND }
+#define HTTP_RES_INTERNAL_SERVER_ERROR \
+    (Response) { .status = HTTP_INTERNAL_SERVER_ERROR, .header = HTTP_HEADER_INTERNAL_SERVER_ERROR }
+#define HTTP_RES_NOT_IMPLEMENTED \
+    (Response) { .status = HTTP_NOT_IMPLEMENTED, .header = HTTP_HEADER_NOT_IMPLEMENTED }
+
 enum HttpMethod {
     HTTP_GET,
     HTTP_POST,

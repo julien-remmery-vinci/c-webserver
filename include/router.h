@@ -5,10 +5,16 @@
 #include "request.h"
 #include <stddef.h>
 
+struct Route;
+
+typedef int (*RouteHandler)(struct Route* route, Request* request);
+
 typedef struct Route {
     enum HttpMethod method;
     char* path;
-    int (*handler)(Request* req);
+    RouteHandler handler;
+    char *file_buffer;
+    size_t file_size;
 } Route;
 
 typedef struct Router {

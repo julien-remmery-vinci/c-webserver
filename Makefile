@@ -36,6 +36,9 @@ $(BUILD_DIR)/%.o: %.c
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) $(INCLUDE_DIRS) -c $< -o $@
 
+run: $(PROJECT_NAME)
+	$(BIN_DIR)/$(PROJECT_NAME)
+
 # Clean build and bin files
 clean:
 	rm -rf $(BUILD_DIR) $(BIN_DIR) $(LOGS_DIR)

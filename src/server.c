@@ -60,12 +60,51 @@ int handle_signal(int signum, void (*handler)(int signum)) {
     return ret;
 }
 
-int route_get_root(Request* req) {
-    return send_file(req, "static/index.html");
+void preload_file(Route* route, const char *filename) {
+    FILE *fp = fopen(filename, "rb");
+    if (fp == NULL) {
+        perror("Error opening file");
+        exit(EXIT_FAILURE);
+    }
+
+    fseek(fp, 0, SEEK_END);
+    route->file_size = ftell(fp);
+    rewind(fp);
+
+    route->file_buffer = (char *)malloc(route->file_size);
+    if (route->file_buffer == NULL) {
+        perror("Memory allocation failed");
+        exit(EXIT_FAILURE);
+    }
+
+    fread(route->file_buffer, 1, route->file_size, fp);
+    fclose(fp);
+
+    printf("File preloaded: %s %zu bytes\n", filename, route->file_size);
 }
 
-int route_get_users(Request* req) {
-    return sresponse(req->client_fd, HTTP_HEADER_NOT_IMPLEMENTED);
+int route_get_root(Route* route, Request* req) {
+    req->response = HTTP_RES_OK;
+    sresponse(req->client_fd, &req->response);
+
+    if (route->file_buffer != NULL && route->file_size > 0) {
+        if (send(req->client_fd, route->file_buffer, route->file_size, 0) == -1) {
+            perror("Error sending file");
+        }
+        return 0;
+    }
+    send_file(req, "static/index.html");
+    return 0;
+}
+
+int route_get_favicon(Route* route, Request* req) {
+    sresponse(req->client_fd, &HTTP_RES_NOT_FOUND);
+    return 0;
+}
+
+int route_get_users(Route* route, Request* req) {
+    sresponse(req->client_fd, &HTTP_RES_NOT_IMPLEMENTED);
+    return 0;
 }
 
 int main(void) {
@@ -110,7 +149,15 @@ int main(void) {
         .path = "/",
         .handler = route_get_root
     };
+    preload_file(&get_root, "static/index.html");
     add_route(&router, &get_root);
+
+    Route get_favicon = {
+        .method = HTTP_GET,
+        .path = "/favicon.ico",
+        .handler = route_get_favicon
+    };
+    add_route(&router, &get_favicon);
     
     Route get_users = {
         .method = HTTP_GET,
@@ -132,6 +179,14 @@ int main(void) {
             continue;
         }
 
+        Request req = {
+            .client_fd = client_fd,
+            .method = HTTP_NO_METHOD
+        };
+
+        printf("====================\n");
+        gettimeofday(&req.start, NULL);
+
         sem_wait(sem);
         (*connection_count)++;
         sem_post(sem);
@@ -141,26 +196,21 @@ int main(void) {
             char buf[BUFLEN+1];
             rrequest(client_fd, buf);
 
-            Request req = {
-                .client_fd = client_fd,
-                .method = HTTP_NO_METHOD
-            };
-
-            Response res = {};
-            req.response = &res;
-
             ret = parse_request(&req, buf);
             
             if(ret == HTTP_MALFORMED_ERROR) {
-                sresponse(req.client_fd, HTTP_HEADER_MALFORMED);
+                sresponse(req.client_fd, &HTTP_RES_HEADER_MALFORMED);
             } else if (ret == HTTP_NOT_IMPLEMENTED_ERROR) {
-                sresponse(req.client_fd, HTTP_HEADER_NOT_IMPLEMENTED);
+                sresponse(req.client_fd, &HTTP_RES_NOT_IMPLEMENTED);
             } else {
-                log_request(&req);
                 handle_request(&router, &req);
             }
 
+            // Close connection
             close(client_fd);
+
+            gettimeofday(&req.stop, NULL);
+            log_request(&req);
 
             sem_wait(sem);
             (*connection_count)--;
@@ -181,6 +231,12 @@ int main(void) {
     sem_unlink(SEM_NAME);
     shmdt(connection_count);
     shmctl(shm_id, IPC_RMID, NULL);
+
+    for (int i = 0; i < router.nb_routes; ++i) {
+        if (router.routes[i].file_buffer != NULL) {
+            free(router.routes[i].file_buffer);
+        }
+    }
 
     INFO("Stopping server");
 
