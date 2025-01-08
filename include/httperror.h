@@ -1,7 +1,0 @@
-#ifndef HTTP_ERROR_H_
-#define HTTP_ERROR_H_
-
-#define HTTP_MALFORMED_ERROR -1
-#define HTTP_NOT_IMPLEMENTED_ERROR -2
-
-#endif // HTTP_ERROR_H_

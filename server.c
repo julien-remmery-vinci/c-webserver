@@ -1,20 +1,9 @@
+#define DATA_STRUCTURES_IMPLEMENTATION
+#include "data_structures.h"
+#define JUTILS_IMPLEMENTATION
 #include "jutils.h"
-#include "http.h"
-#include "request.h"
-#include "router.h"
-#include "config.h"
-#include "httperror.h"
-#include <string.h>
-#include <assert.h>
-#include <netinet/in.h>
-#include <unistd.h>
-#include <semaphore.h>
-#include <fcntl.h>
-#include <signal.h>
-#include <sys/shm.h>
-#include <sys/socket.h>
-#include <sys/types.h>
-#include <sys/wait.h>
+#define WEBSERVER_IMPLEMENTATION
+#include "webserver.h"
 
 volatile sig_atomic_t stop_server = 0;
 
@@ -42,10 +31,12 @@ int init_server() {
 }
 
 void sigint_handler(int signum) {
+    (void)signum;
     stop_server = 1;
 }
 
 void sigchld_handler(int signum) {
+    (void)signum;
     while (waitpid(-1, NULL, WNOHANG) > 0);
 }
 
@@ -98,11 +89,14 @@ int route_get_root(Route* route, Request* req) {
 }
 
 int route_get_favicon(Route* route, Request* req) {
-    sresponse(req->client_fd, &HTTP_RES_NOT_FOUND);
+    (void)route;
+    req->response = HTTP_RES_NOT_FOUND;
+    sresponse(req->client_fd, &req->response);
     return 0;
 }
 
 int route_get_users(Route* route, Request* req) {
+    (void)route;
     sresponse(req->client_fd, &HTTP_RES_NOT_IMPLEMENTED);
     return 0;
 }
@@ -232,7 +226,7 @@ int main(void) {
     shmdt(connection_count);
     shmctl(shm_id, IPC_RMID, NULL);
 
-    for (int i = 0; i < router.nb_routes; ++i) {
+    for (size_t i = 0; i < router.nb_routes; ++i) {
         if (router.routes[i].file_buffer != NULL) {
             free(router.routes[i].file_buffer);
         }
