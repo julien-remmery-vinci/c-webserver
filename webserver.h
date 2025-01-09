@@ -242,13 +242,6 @@ Ws_log_request(Request* req)
 }
 
 int
-Ws_build_response(Request* req)
-{
-    (void)req;
-    return -1;
-}
-
-int
 Ws_send_file(Request* req, char* filepath)
 {
     int filefd = open(filepath, O_RDONLY);
