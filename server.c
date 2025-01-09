@@ -1,3 +1,4 @@
+#define _GNU_SOURCE // For sigaction incomplete struct error
 #define DATA_STRUCTURES_IMPLEMENTATION
 #include "data_structures.h"
 #define JUTILS_IMPLEMENTATION
@@ -7,11 +8,13 @@
 
 volatile sig_atomic_t stop_server = 0;
 
-int init_server() {
+int
+init_server()
+{
     int ret;
 
     int sockfd = socket(AF_INET, SOCK_STREAM, 0);
-    CHECK(sockfd > 0);
+    CHECK(sockfd > 0, "socket error");
     
     int option = 1;
     setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &option, sizeof(int));
@@ -22,61 +25,70 @@ int init_server() {
     addr.sin_port = htons(PORT);
     addr.sin_addr.s_addr = htonl(INADDR_ANY);
     ret = bind(sockfd, (struct sockaddr *) &addr, sizeof(addr));
-    CHECK(ret == 0);
+    CHECK(ret == 0, "bind error");
 
     ret = listen(sockfd, BACKLOG);
-    CHECK(ret == 0);
+    CHECK(ret == 0, "listen error");
 
     return sockfd;
 }
 
-void sigint_handler(int signum) {
+void
+sigint_handler(int signum)
+{
     (void)signum;
     stop_server = 1;
 }
 
-void sigchld_handler(int signum) {
+void
+sigchld_handler(int signum)
+{
     (void)signum;
     while (waitpid(-1, NULL, WNOHANG) > 0);
 }
 
-int handle_signal(int signum, void (*handler)(int signum)) {
+int
+handle_signal(int signum, void (*handler)(int signum))
+{
     struct sigaction action;
     action.sa_handler = handler;
     int ret = sigfillset(&action.sa_mask);
-    CHECK(ret == 0);
+    CHECK(ret == 0, "sigfillset error");
     action.sa_flags = 0;
     ret = sigaction (signum, &action, NULL);
-    CHECK(ret == 0);
+    CHECK(ret == 0, "sigaction error");
     return ret;
 }
 
-void preload_file(Route* route, const char *filename) {
-    FILE *fp = fopen(filename, "rb");
-    if (fp == NULL) {
-        perror("Error opening file");
-        exit(EXIT_FAILURE);
-    }
+// TODO : refactor to use new system
+// void preload_file(Route* route, const char *filename) {
+//     FILE *fp = fopen(filename, "rb");
+//     if (fp == NULL) {
+//         perror("Error opening file");
+//         exit(EXIT_FAILURE);
+//     }
 
-    fseek(fp, 0, SEEK_END);
-    route->file_size = ftell(fp);
-    rewind(fp);
+//     fseek(fp, 0, SEEK_END);
+//     route->file_size = ftell(fp);
+//     rewind(fp);
 
-    route->file_buffer = (char *)malloc(route->file_size);
-    if (route->file_buffer == NULL) {
-        perror("Memory allocation failed");
-        exit(EXIT_FAILURE);
-    }
+//     route->file_buffer = (char *)malloc(route->file_size);
+//     if (route->file_buffer == NULL) {
+//         perror("Memory allocation failed");
+//         exit(EXIT_FAILURE);
+//     }
 
-    fread(route->file_buffer, 1, route->file_size, fp);
-    fclose(fp);
+//     fread(route->file_buffer, 1, route->file_size, fp);
+//     fclose(fp);
 
-    printf("File preloaded: %s %zu bytes\n", filename, route->file_size);
-}
+//     printf("File preloaded: %s %zu bytes\n", filename, route->file_size);
+// }
 
-int route_get_root(Route* route, Request* req) {
+int
+route_get_root(Route* route, Request* req)
+{
     req->response = HTTP_RES_OK;
-    sresponse(req->client_fd, &req->response);
+    Ws_send_response(req->client_fd, &req->response);
 
     if (route->file_buffer != NULL && route->file_size > 0) {
         if (send(req->client_fd, route->file_buffer, route->file_size, 0) == -1) {
@@ -84,24 +96,44 @@ int route_get_root(Route* route, Request* req) {
         }
         return 0;
     }
-    send_file(req, "static/index.html");
+    Ws_send_file(req, "static/index.html");
     return 0;
 }
 
-int route_get_favicon(Route* route, Request* req) {
+int
+route_get_favicon(Route* route, Request* req)
+{
     (void)route;
     req->response = HTTP_RES_NOT_FOUND;
-    sresponse(req->client_fd, &req->response);
+    Ws_send_response(req->client_fd, &req->response);
     return 0;
 }
 
-int route_get_users(Route* route, Request* req) {
+int
+route_get_users(Route* route, Request* req)
+{
     (void)route;
-    sresponse(req->client_fd, &HTTP_RES_NOT_IMPLEMENTED);
+    req->response = HTTP_RES_NOT_IMPLEMENTED;
+    Ws_send_response(req->client_fd, &req->response);
     return 0;
 }
 
-int main(void) {
+Router
+setup_router()
+{
+    Router router = {0};
+    // Initialize the map to store routes with a size of 10
+    router.routes = hm_create(10);
+
+    Ws_router_handle(&router, "/", HTTP_GET, route_get_root);
+    Ws_router_handle(&router, "/favicon.ico", HTTP_GET, route_get_favicon);
+    Ws_router_handle(&router, "/users", HTTP_GET, route_get_users);
+    return router;
+}
+
+int 
+main(void)
+{
     int ret, shm_id;
     int *connection_count;
     sem_t *sem;
@@ -133,32 +165,7 @@ int main(void) {
 
     int sockfd = init_server();
 
-    Router router = {
-        .routes = NULL,
-        .nb_routes = 0
-    };
-
-    Route get_root = {
-        .method = HTTP_GET,
-        .path = "/",
-        .handler = route_get_root
-    };
-    preload_file(&get_root, "static/index.html");
-    add_route(&router, &get_root);
-
-    Route get_favicon = {
-        .method = HTTP_GET,
-        .path = "/favicon.ico",
-        .handler = route_get_favicon
-    };
-    add_route(&router, &get_favicon);
-    
-    Route get_users = {
-        .method = HTTP_GET,
-        .path = "/users",
-        .handler = route_get_users
-    };
-    add_route(&router, &get_users);
+    Router router = setup_router();
 
     INFO("Server ready");
 
@@ -173,13 +180,13 @@ int main(void) {
             continue;
         }
 
-        Request req = {
+        Request request = {
             .client_fd = client_fd,
             .method = HTTP_NO_METHOD
         };
 
         printf("====================\n");
-        gettimeofday(&req.start, NULL);
+        Ws_start_request(&request);
 
         sem_wait(sem);
         (*connection_count)++;
@@ -188,23 +195,23 @@ int main(void) {
 
         if(childId == 0) {
             char buf[BUFLEN+1];
-            rrequest(client_fd, buf);
+            Ws_read_request(client_fd, buf);
 
-            ret = parse_request(&req, buf);
+            ret = Ws_parse_request(&request, buf);
             
             if(ret == HTTP_MALFORMED_ERROR) {
-                sresponse(req.client_fd, &HTTP_RES_HEADER_MALFORMED);
+                Ws_send_response(request.client_fd, &HTTP_RES_HEADER_MALFORMED);
             } else if (ret == HTTP_NOT_IMPLEMENTED_ERROR) {
-                sresponse(req.client_fd, &HTTP_RES_NOT_IMPLEMENTED);
+                Ws_send_response(request.client_fd, &HTTP_RES_NOT_IMPLEMENTED);
             } else {
-                handle_request(&router, &req);
+                Ws_handle_request(&router, &request);
             }
 
             // Close connection
             close(client_fd);
 
-            gettimeofday(&req.stop, NULL);
-            log_request(&req);
+            Ws_end_request(&request);
+            Ws_log_request(&request);
 
             sem_wait(sem);
             (*connection_count)--;
@@ -226,9 +233,12 @@ int main(void) {
     shmdt(connection_count);
     shmctl(shm_id, IPC_RMID, NULL);
 
-    for (size_t i = 0; i < router.nb_routes; ++i) {
-        if (router.routes[i].file_buffer != NULL) {
-            free(router.routes[i].file_buffer);
+    for (size_t i = 0; i < router.routes.size; ++i) 
+    {
+        HashMapEntry* entry = router.routes.entries[i];
+        if (entry != NULL)
+        {
+            free(entry->value);
         }
     }
 

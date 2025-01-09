@@ -79,7 +79,7 @@ hash(unsigned char *str)
     unsigned long hash = 5381;
     int c;
 
-    while (c = *str++)
+    while ((c = *str++))
         hash = ((hash << 5) + hash) + c; /* hash * 33 + c */
 
     return hash;
@@ -157,7 +157,7 @@ hm_get(HashMap* map, char* key)
         return NULL;
     }
 
-    unsigned long hashcode = hash(key);
+    unsigned long hashcode = hash((unsigned char*)key);
     size_t index = hashcode % map->size;
 
     HashMapEntry* current = map->entries[index];
@@ -190,7 +190,7 @@ hm_put(HashMap* map, char* key, void* value)
     }
 
     // Hashcode and bucket index
-    unsigned long hashcode = hash(key);
+    unsigned long hashcode = hash((unsigned char*)key);
     size_t index = hashcode % map->size;
 
     HashMapEntry* new_entry = create_entry(key, value);
@@ -223,7 +223,7 @@ hm_remove(HashMap* map, char* key){
         return NULL;
     }
 
-    unsigned long hashcode = hash(key);
+    unsigned long hashcode = hash((unsigned char*)key);
     size_t index = hashcode % map->size;
 
     HashMapEntry* current = map->entries[index];

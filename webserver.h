@@ -58,10 +58,6 @@ enum HttpStatus {
     HTTP_NOT_IMPLEMENTED = 501
 };
 
-enum HttpMethod get_http_method(char* str);
-char* strmethod(enum HttpMethod method);
-char* strstatus(enum HttpStatus status);
-
 #define HTTP_MALFORMED_ERROR -1
 #define HTTP_NOT_IMPLEMENTED_ERROR -2
 
@@ -76,36 +72,51 @@ typedef struct Request {
     char* path;
     char* http_version;
     struct timeval start;
-    struct timeval stop;
+    struct timeval end;
+    double request_timing;
     Response response;
 } Request;
 
-int rrequest(int fd, char* buf);
-int sresponse(int fd, Response* res);
-int parse_request(Request* req, char* reqstr);
-void log_request(Request* req);
-int build_response(Request* req);
-int send_file(Request* req, char* filepath);
+int
+Ws_read_request(int fd, char* buf);
+int
+Ws_send_response(int fd, Response* res);
+int
+Ws_parse_request(Request* req, char* reqstr);
+void
+Ws_log_request(Request* req);
+int
+Ws_send_file(Request* req, char* filepath);
 
-struct Route;
+typedef struct Route Route;
 
-typedef int (*RouteHandler)(struct Route* route, Request* request);
-
-typedef struct Route {
+struct Route {
     enum HttpMethod method;
     char* path;
-    RouteHandler handler;
+    int (*handler)(Route* route, Request* request);
     char *file_buffer;
     size_t file_size;
-} Route;
+};
 
 typedef struct Router {
-    Route* routes;
-    size_t nb_routes;
+    HashMap routes;
 } Router;
 
-int add_route(Router* router, Route* route);
-int handle_request(Router* router, Request* req);
+void 
+Ws_router_handle(
+    Router* router, 
+    char* path, 
+    enum HttpMethod method, 
+    int (*handler)(Route* route, Request* request));
+
+int 
+Ws_handle_request(Router* router, Request* request);
+
+void
+Ws_start_request(Request* request);
+
+void
+Ws_end_request(Request* request);
 
 #endif // WEBSERVER_H
 
@@ -132,7 +143,9 @@ int handle_request(Router* router, Request* req);
 #include <sys/ipc.h>
 #include <sys/shm.h>
 
-enum HttpMethod get_http_method(char* str) {
+enum
+HttpMethod get_http_method(char* str)
+{
     if(!strcmp(str, "GET")) return HTTP_GET;
     if(!strcmp(str, "POST")) return HTTP_POST;
     if(!strcmp(str, "PUT")) return HTTP_PUT;
@@ -143,7 +156,9 @@ enum HttpMethod get_http_method(char* str) {
     return HTTP_NO_METHOD;
 }
 
-char* strmethod(enum HttpMethod method) {
+char*
+strmethod(enum HttpMethod method)
+{
     switch (method) {
     case HTTP_GET:
         return "GET";
@@ -160,7 +175,9 @@ char* strmethod(enum HttpMethod method) {
     }
 }
 
-char* strstatus(enum HttpStatus status) {
+char*
+strstatus(enum HttpStatus status)
+{
     switch(status) {
         case(HTTP_OK):
             return "Success";
@@ -181,18 +198,24 @@ char* strstatus(enum HttpStatus status) {
     }
 }
 
-int rrequest(int fd, char* buf) {
+int
+Ws_read_request(int fd, char* buf) 
+{
     int ret = read(fd, buf, BUFLEN);
-    CHECK(ret > 0);
+    CHECK(ret > 0, "read empty request");
     return ret;
 }
 
-int sresponse(int fd, Response* res) {
+int
+Ws_send_response(int fd, Response* res)
+{
     write(fd, res->header, strlen(res->header));
     return 0;
 }
 
-int parse_request(Request* req, char* reqstr) {
+int
+Ws_parse_request(Request* req, char* reqstr)
+{
     char* method_str = strtok(reqstr, " \r\n");
     char* path = strtok(NULL, " \r\n");
     char* version = strtok(NULL, " \r\n");
@@ -212,21 +235,25 @@ int parse_request(Request* req, char* reqstr) {
     return 0;
 }
 
-void log_request(Request* req) {
-    // Time from start of request processing to its end in milliseconds
-    double req_time_ms = (double)((req->stop.tv_sec - req->start.tv_sec) * 1000000 + req->stop.tv_usec - req->start.tv_usec)/1000;
-    INFO("%8.3f ms %-3d %-6s %s", req_time_ms, req->response.status, strmethod(req->method), req->path);
+void
+Ws_log_request(Request* req) 
+{
+    INFO("%8.3f ms %-3d %-6s %s", req->request_timing, req->response.status, strmethod(req->method), req->path);
 }
 
-int build_response(Request* req) {
+int
+Ws_build_response(Request* req)
+{
     (void)req;
     return -1;
 }
 
-int send_file(Request* req, char* filepath) {
+int
+Ws_send_file(Request* req, char* filepath)
+{
     int filefd = open(filepath, O_RDONLY);
     if(filefd == -1) {
-        sresponse(req->client_fd, &HTTP_RES_INTERNAL_SERVER_ERROR);
+        Ws_send_response(req->client_fd, &HTTP_RES_INTERNAL_SERVER_ERROR);
         return 0;
     }
     off_t offset = 0;
@@ -242,38 +269,78 @@ int send_file(Request* req, char* filepath) {
     return 0;
 }
 
-int add_route(Router* router, Route* route) {
-    if(router->routes == NULL) {
-        router->routes = (Route*)malloc(sizeof(Route));
-        if (router->routes == NULL) {
-            return -1; // Échec d'allocation
-        }
-    } else {
-        Route* temp = (Route*)realloc(router->routes, (router->nb_routes + 1) * sizeof(Route));
-        if (temp == NULL) {
-            perror("realloc failed");
-            return -1; // Échec d'allocation
-        }
-        router->routes = temp;
-    }
-    router->routes[router->nb_routes++] = *route;
-    return 0;
+Route*
+Ws_create_route(
+    char* path, 
+    enum HttpMethod method, 
+    int (*handler)(Route* route, Request* request)
+)
+{
+    Route* route = malloc(sizeof(Route));
+    CHECK(route != NULL, "route alloc error");
+    route->path = path;
+    route->method = method;
+    route->handler = handler;
+    return route;
 }
 
-int handle_request(Router* router, Request* req) {
-    for (size_t i = 0; i < router->nb_routes; i++)
-    {
-        Route route = router->routes[i];
-        if(strcmp(route.path, req->path) == 0
-            && route.method == req->method) {
-            return route.handler(&route, req);
-        }
-    }
+void 
+Ws_router_handle(
+    Router* router, 
+    char* path, 
+    enum HttpMethod method, 
+    int (*handler)(Route* route, Request* request)
+)
+{
+    CHECK(path != NULL, "add handler null path");
+    CHECK(method >= 0 && method < HTTP_NO_METHOD, "add handler wrong method");
     
-    req->response = HTTP_RES_NOT_FOUND;
-    sresponse(req->client_fd, &req->response);
-    send_file(req, "static/not_found.html");
-    return 0;
+    Route* route = Ws_create_route(path, method, handler);
+
+    StringBuilder builder = {0};
+    Ju_str_append_null(&builder, strmethod(method), path);
+    hm_put(&router->routes, builder.items, route);
+    Ju_str_free(&builder);
+}
+
+void
+handle_not_found_request(Request* request)
+{
+    request->response = HTTP_RES_NOT_FOUND;
+    Ws_send_response(request->client_fd, &request->response);
+    Ws_send_file(request, "static/not_found.html");
+}
+
+int
+Ws_handle_request(Router* router, Request* request)
+{
+    StringBuilder builder = {0};
+    Ju_str_append_null(&builder, strmethod(request->method), request->path);
+    Route* route = hm_get(&router->routes, builder.items);
+    Ju_str_free(&builder);
+    if (route == NULL)
+    {
+        handle_not_found_request(request);
+        return 0;
+    }
+    else
+    {
+        return route->handler(route, request);
+    }
+}
+
+void
+Ws_start_request(Request* request)
+{
+    gettimeofday(&request->start, NULL);
+}
+
+void
+Ws_end_request(Request* request)
+{
+    gettimeofday(&request->end, NULL);
+    request->request_timing =
+        (double)((request->end.tv_sec - request->start.tv_sec) * 1000000 + request->end.tv_usec - request->start.tv_usec) / 1000;
 }
 
 #endif // WEBSERVER_IMPLEMENTATION
