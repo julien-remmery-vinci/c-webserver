@@ -5,6 +5,7 @@
 #define DATA_STRUCTURES_H
 
 #include <stddef.h>
+#include <stdbool.h>
 #include <stdlib.h>
 
 #define HM_DEFAULT_SIZE 10
@@ -36,7 +37,7 @@ hm_create(size_t size);
  *  - NULL if the key is not present, or the map is is NULL allocated
  */
 void*
-hm_get(HashMap* map, char* key);
+hm_get(HashMap* map, const char* key);
 
 /**
  * Put the key, value pair in the hashmap
@@ -45,7 +46,7 @@ hm_get(HashMap* map, char* key);
  *  - -1 if the map is NULL allocated
  */
 int
-hm_put(HashMap* map, char* key, void* value);
+hm_put(HashMap* map, const char* key, void* value);
 
 /**
  * Remove a key, value pair from the hashtable
@@ -54,13 +55,21 @@ hm_put(HashMap* map, char* key, void* value);
  *  - NULL if the key is not present, or the map is is NULL allocated
  */
 void*
-hm_remove(HashMap* map, char* key);
+hm_remove(HashMap* map, const char* key);
 
 /**
  * Free the memory allocated for the map
  */
 void
 hm_free(HashMap* map);
+
+/**
+ * Returns
+ *  true if the map is empty
+ *  false if the map contains at least one key
+ */
+bool
+hm_isempty(HashMap map);
 
 #endif // DATA_STRUCTURES_H
 
@@ -151,7 +160,7 @@ hm_resize(HashMap* map)
 }
 
 void*
-hm_get(HashMap* map, char* key)
+hm_get(HashMap* map, const char* key)
 {
     if(map == NULL) {
         return NULL;
@@ -172,7 +181,7 @@ hm_get(HashMap* map, char* key)
 }
 
 int
-hm_put(HashMap* map, char* key, void* value)
+hm_put(HashMap* map, const char* key, void* value)
 {
     if(map == NULL) {
         return -1;
@@ -218,7 +227,7 @@ hm_put(HashMap* map, char* key, void* value)
 }
 
 void*
-hm_remove(HashMap* map, char* key){
+hm_remove(HashMap* map, const char* key){
     if(map == NULL) {
         return NULL;
     }
@@ -261,6 +270,12 @@ hm_free(HashMap* map)
         }
     }
     free(map->entries);
+}
+
+bool
+hm_isempty(HashMap map)
+{
+    return map.entries_count == 0;
 }
 
 #endif
