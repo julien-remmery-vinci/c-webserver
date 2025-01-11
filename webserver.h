@@ -150,6 +150,7 @@ typedef struct Ws_Server {
     int connection_count_shm_id;
     sem_t* connection_count_sem;
     int sock_fd;
+    int max_connections;
     Ws_Config config;
     Ws_Router router;
 } Ws_Server;
@@ -191,6 +192,18 @@ Ws_run_server(Ws_Server* server);
 #include <semaphore.h>
 #include <sys/ipc.h>
 #include <sys/shm.h>
+
+/**
+ * Send an http response
+ */
+int
+Ws_send_response(int fd, Response* res);
+
+/**
+ * Send a file to a client
+ */
+int
+Ws_send_file(Request* req, char* filepath);
 
 // Handles the stopping of the server when SIGINT is encountered, through 'sigint_handler()'
 volatile sig_atomic_t stop_server = 0;
@@ -390,7 +403,11 @@ Ws_init_server_socket(Ws_Server* server)
     ret = bind(sockfd, (struct sockaddr *) &addr, sizeof(addr));
     CHECK(ret == 0, "Ws_init_server_socket : bind error");
 
-    ret = listen(sockfd, WS_CONFIG_DEFAULT_BACKLOG);
+    char* str_backlog = Ws_config_get_value(&server->config, "backlog");
+    Ws_parse_result backlog = Ws_parse_int(str_backlog);
+    if(backlog.error) backlog.int_val = WS_CONFIG_DEFAULT_BACKLOG;
+
+    ret = listen(sockfd, backlog.int_val);
     CHECK(ret == 0, "Ws_init_server_socket : listen error");
 
     server->sock_fd = sockfd;
@@ -420,6 +437,12 @@ Ws_server_setup(Ws_Config config, Ws_Router router)
     sem_t* sem = sem_open(SEM_NAME, O_CREAT, 0644, 1);
     CHECK(sem != SEM_FAILED, "Ws_server_setup : sem_open failed");
     server.connection_count_sem = sem;
+
+    char* str_max_conn = Ws_config_get_value(&server.config, "max_conn");
+    Ws_parse_result max_conn = Ws_parse_int(str_max_conn);
+    if(max_conn.error) max_conn.int_val = WS_CONFIG_DEFAULT_MAX_CONNECTIONS;
+
+    server.max_connections = max_conn.int_val;
 
     Ws_handle_signal(SIGINT, sigint_handler);
 
@@ -504,9 +527,6 @@ Ws_read_request(int fd, char* buf)
     return ret;
 }
 
-/**
- * Send an http response
- */
 int
 Ws_send_response(int fd, Response* res)
 {
@@ -548,9 +568,6 @@ Ws_log_request(Request* req)
     INFO("%8.3f ms %-3d %-6s %s", req->request_timing, req->response.status, strmethod(req->method), req->path);
 }
 
-/**
- * Send a file to a client
- */
 int
 Ws_send_file(Request* req, char* filepath)
 {
@@ -666,7 +683,7 @@ Ws_run_server(Ws_Server* server)
 
     while(!stop_server) {
         sem_wait(server->connection_count_sem);
-        if(*server->connection_count == WS_CONFIG_DEFAULT_MAX_CONNECTIONS) {
+        if(*server->connection_count == server->max_connections) {
             continue;
         }
         sem_post(server->connection_count_sem);
