@@ -123,7 +123,7 @@ setup_router()
 {
     Router router = {0};
     // Initialize the map to store routes with a size of 10
-    router.routes = hm_create(10);
+    router.routes = hm_create(HM_DEFAULT_SIZE);
 
     Ws_router_handle(&router, "/", HTTP_GET, route_get_root);
     Ws_router_handle(&router, "/favicon.ico", HTTP_GET, route_get_favicon);
