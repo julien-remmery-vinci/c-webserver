@@ -103,6 +103,8 @@ typedef struct Response {
  */
 typedef struct Request {
     int client_fd;
+    char* client_ip;
+    int client_port;
     enum HttpMethod method;
     char* path;
     char* http_version;
@@ -151,6 +153,7 @@ typedef struct Ws_Server {
     sem_t* connection_count_sem;
     int sock_fd;
     int max_connections;
+    bool requests_logging;
     Ws_Config config;
     Ws_Router router;
 } Ws_Server;
@@ -160,6 +163,18 @@ typedef struct Ws_Server {
  */
 Ws_Server
 Ws_server_setup(Ws_Config config, Ws_Router router);
+
+/**
+ * Enable requests logging on the server
+ */
+bool
+Ws_server_enable_logging(Ws_Server* server);
+
+/**
+ * Disable requests logging on the server
+ */
+bool
+Ws_server_disable_logging(Ws_Server* server);
 
 /**
  * Run the server
@@ -192,6 +207,7 @@ Ws_run_server(Ws_Server* server);
 #include <semaphore.h>
 #include <sys/ipc.h>
 #include <sys/shm.h>
+#include <arpa/inet.h>
 
 /**
  * Send an http response
@@ -443,12 +459,28 @@ Ws_server_setup(Ws_Config config, Ws_Router router)
     if(max_conn.error) max_conn.int_val = WS_CONFIG_DEFAULT_MAX_CONNECTIONS;
 
     server.max_connections = max_conn.int_val;
-
+    server.requests_logging = false;
     Ws_handle_signal(SIGINT, sigint_handler);
 
     Ws_init_server_socket(&server);
     INFO("Server setup done");
     return server;
+}
+
+bool
+Ws_server_enable_logging(Ws_Server* server)
+{
+  if (server == NULL) return false;
+  server->requests_logging = true;
+  return true;
+}
+
+bool
+Ws_server_disable_logging(Ws_Server* server)
+{
+  if (server == NULL) return false;
+  server->requests_logging = false;
+  return true;
 }
 
 /**
@@ -565,7 +597,7 @@ Ws_parse_request(Request* req, char* reqstr)
 void
 Ws_log_request(Request* req) 
 {
-    INFO("%8.3f ms %-3d %-6s %s", req->request_timing, req->response.status, strmethod(req->method), req->path);
+    INFO("%s %8.3f ms %-3d %-6s %s", req->client_ip, req->request_timing, req->response.status, strmethod(req->method), req->path);
 }
 
 int
@@ -676,6 +708,35 @@ Ws_end_request(Request* request)
 }
 
 int
+Ws_resolve_client(Request* request)
+{
+    struct sockaddr_in addr;
+    socklen_t addrlen = sizeof addr;
+    memset(&addr, 0, sizeof addr);
+    int ret = getpeername(request->client_fd, (struct sockaddr*)&addr, &addrlen);
+    if (ret == -1) 
+    {
+        ERROR("Ws_resolve_client : etpeername");
+        return -1;
+    }
+    char ip[INET_ADDRSTRLEN];
+    request->client_port = ntohs(addr.sin_port);
+    request->client_ip = (char*)malloc(INET_ADDRSTRLEN * sizeof(char));
+    if (request->client_ip == NULL) 
+    {
+        ERROR("Ws_resolve_client : client ip malloc error");
+        return -1;
+    }
+
+    if (inet_ntop(AF_INET, &addr.sin_addr, request->client_ip, sizeof(ip)) == NULL)
+    {
+        ERROR("Ws_resolve_client : inet_ntop");
+        return -1;
+    }
+    return 0;
+}
+
+int
 Ws_run_server(Ws_Server* server)
 {
     int ret;
@@ -696,6 +757,7 @@ Ws_run_server(Ws_Server* server)
             .client_fd = client_fd,
             .method = HTTP_NO_METHOD
         };
+        Ws_resolve_client(&request);
 
         Ws_start_request(&request);
 
@@ -722,7 +784,8 @@ Ws_run_server(Ws_Server* server)
             close(client_fd);
 
             Ws_end_request(&request);
-            Ws_log_request(&request);
+
+            if (server->requests_logging) Ws_log_request(&request);
 
             sem_wait(server->connection_count_sem);
             (*server->connection_count)--;
