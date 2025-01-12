@@ -22,6 +22,38 @@ route_get_root(Route* route, Request* req)
 }
 
 int
+route_get_indexjs(Route* route, Request* req)
+{
+    req->response = HTTP_RES_OK;
+    Ws_send_response(req->client_fd, &req->response);
+
+    if (route->file_buffer != NULL && route->file_size > 0) {
+        if (send(req->client_fd, route->file_buffer, route->file_size, 0) == -1) {
+            perror("Error sending file");
+        }
+        return 0;
+    }
+    Ws_send_file(req, "static/index.js");
+    return 0;
+}
+
+int
+route_get_indexcss(Route* route, Request* req)
+{
+    req->response = HTTP_RES_OK;
+    Ws_send_response(req->client_fd, &req->response);
+
+    if (route->file_buffer != NULL && route->file_size > 0) {
+        if (send(req->client_fd, route->file_buffer, route->file_size, 0) == -1) {
+            perror("Error sending file");
+        }
+        return 0;
+    }
+    Ws_send_file(req, "static/index.css");
+    return 0;
+}
+
+int
 route_get_favicon(Route* route, Request* req)
 {
     (void)route;
@@ -47,8 +79,9 @@ setup_router()
     router.routes = hm_create(HM_DEFAULT_SIZE);
 
     Ws_router_handle(&router, "/", HTTP_GET, route_get_root);
+    Ws_router_handle(&router, "/index.js", HTTP_GET, route_get_indexjs);
+    Ws_router_handle(&router, "/index.css", HTTP_GET, route_get_indexcss);
     Ws_router_handle(&router, "/favicon.ico", HTTP_GET, route_get_favicon);
-    Ws_router_handle(&router, "/users", HTTP_GET, route_get_users);
     return router;
 }
 
@@ -60,4 +93,4 @@ main(void)
     Ws_Server server = Ws_server_setup(config, router);
     Ws_server_enable_logging(&server);
     return Ws_run_server(&server);
-}   
+}
