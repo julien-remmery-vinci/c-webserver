@@ -60,3 +60,5 @@ logs/
 .vscode
 
 server
+test
+test.c
