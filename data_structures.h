@@ -8,6 +8,12 @@
 #include <stdbool.h>
 #include <stdlib.h>
 
+typedef enum {
+    HM_OK,
+    HM_ERR_INVALID_SIZE,
+    HM_ERR_MEMORY_ALLOCATION,
+} Hm_Error;
+
 #define HM_DEFAULT_SIZE 10
 #define HM_RESIZE_FACTOR 2
 typedef struct HashMap HashMap;
@@ -45,7 +51,7 @@ hm_get(HashMap* map, const char* key);
  *  - 0 if the key, value pair was successfully added
  *  - -1 if the map is NULL allocated
  */
-int
+Hm_Error
 hm_put(HashMap* map, const char* key, void* value);
 
 /**
@@ -70,6 +76,9 @@ hm_free(HashMap* map);
  */
 bool
 hm_isempty(HashMap map);
+
+bool
+hm_exists(HashMap* map, const  char* key);
 
 #endif // DATA_STRUCTURES_H
 
@@ -100,15 +109,14 @@ hash(unsigned char *str)
 HashMapEntry*
 create_entry(const char* key, void* value)
 {
-    HashMapEntry* entry = malloc(sizeof(HashMapEntry));
-    if(entry == NULL) {
-        perror("map put allocation error");
-        exit(EXIT_FAILURE);
+    HashMapEntry* entry = calloc(1, sizeof(HashMapEntry));
+    if (entry == NULL) {
+        return NULL;
     }
     entry->key = strdup(key);
     if (entry->key == NULL) {
-        perror("HashMap Error: strdup allocation error");
-        exit(EXIT_FAILURE);
+        free(entry);
+        return NULL;
     }
     entry->value = value;
     entry->next_entry = NULL;
@@ -134,7 +142,7 @@ hm_create(size_t init_size)
     return map;
 }
 
-int
+Hm_Error
 hm_resize(HashMap* map)
 {
     HashMap tmp = {0};
@@ -180,7 +188,7 @@ hm_get(HashMap* map, const char* key)
     return NULL;
 }
 
-int
+Hm_Error
 hm_put(HashMap* map, const char* key, void* value)
 {
     if(map == NULL) {
@@ -190,12 +198,12 @@ hm_put(HashMap* map, const char* key, void* value)
         return -1;
     }
 
+    int ret;
     // Resize if map is full
     // Subject to change to partially full (75%)
     if(map->size == map->entries_count) {
-        if(hm_resize(map) == -1) {
-            return -1;
-        }
+        ret = hm_resize(map);
+        if (ret != HM_OK) return ret;
     }
 
     // Hashcode and bucket index
@@ -203,6 +211,9 @@ hm_put(HashMap* map, const char* key, void* value)
     size_t index = hashcode % map->size;
 
     HashMapEntry* new_entry = create_entry(key, value);
+    if (new_entry == NULL) {
+        return HM_ERR_MEMORY_ALLOCATION;
+    }
 
     if(map->entries[index] == NULL) { // Empty bucket
         map->entries[index] = new_entry;
@@ -265,6 +276,7 @@ hm_free(HashMap* map)
         while (entry != NULL) {
             HashMapEntry* next = entry->next_entry;
             free(entry->key);
+            free(entry->value);
             free(entry);
             entry = next;
         }
@@ -276,6 +288,15 @@ bool
 hm_isempty(HashMap map)
 {
     return map.entries_count == 0;
+}
+
+bool
+hm_exists(HashMap* map, const  char* key)
+{
+    unsigned long hashcode = hash((unsigned char*)key);
+    size_t index = hashcode % map->size;
+
+    return map->entries[index] != NULL;
 }
 
 #endif
