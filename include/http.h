@@ -18,16 +18,15 @@ typedef enum {
 
 #define HTTP_VERSION "HTTP/1.1"
 
-#define HTTP_HEADER_OK "HTTP/1.1 200 OK\n\n"
-#define HTTP_HEADER_NO_CONTENT "HTTP/1.1 204 No Content\n\n"
-#define HTTP_HEADER_BAD_REQUEST "HTTP/1.1 400 Bad Request\n\n"
-#define HTTP_HEADER_UNAUTHORIZED "HTTP/1.1 401 Unauthorized\n\n"
-#define HTTP_HEADER_FORBIDDEN "HTTP/1.1 403 Forbidden\n\n"
-#define HTTP_HEADER_NOT_FOUND "HTTP/1.1 404 Not Found\n\n"
-#define HTTP_HEADER_NOT_ALLOWED "HTTP/1.1 405 Not Allowed\n\n"
-#define HTTP_HEADER_INTERNAL_SERVER_ERROR "HTTP/1.1 500 Internal Server Error\n\n"
-#define HTTP_HEADER_NOT_IMPLEMENTED "HTTP/1.1 501 Not Implemented\n\n"
-#define HTTP_HEADER_MALFORMED "HTTP/1.1 400 Bad Request\n\nMalformed headers in the request."
+#define HTTP_HEADER_OK "HTTP/1.1 200 OK"
+#define HTTP_HEADER_NO_CONTENT "HTTP/1.1 204 No Content"
+#define HTTP_HEADER_BAD_REQUEST "HTTP/1.1 400 Bad Request"
+#define HTTP_HEADER_UNAUTHORIZED "HTTP/1.1 401 Unauthorized"
+#define HTTP_HEADER_FORBIDDEN "HTTP/1.1 403 Forbidden"
+#define HTTP_HEADER_NOT_FOUND "HTTP/1.1 404 Not Found"
+#define HTTP_HEADER_NOT_ALLOWED "HTTP/1.1 405 Not Allowed"
+#define HTTP_HEADER_INTERNAL_SERVER_ERROR "HTTP/1.1 500 Internal Server Error"
+#define HTTP_HEADER_NOT_IMPLEMENTED "HTTP/1.1 501 Not Implemented"
 
 #define HTTP_RES_OK \
     (Response) { .status = HTTP_OK, .header = HTTP_HEADER_OK }
@@ -80,7 +79,7 @@ typedef struct HashMap Http_Headers;
  */
 typedef struct Http_Response {
     Http_Status status;
-    char* header;
+    char* content;
 } Http_Response;
 
 /**
@@ -150,6 +149,12 @@ Http_strstatus(Http_Status status);
 void
 Http_free_request(Http_Request* req);
 
+/**
+ * Get the header string representation of a status code
+ */
+const char*
+Http_get_status_header(Http_Status status);
+
 #endif // HTTP_H
 
 #ifdef HTTP_IMPLEMENTATION
@@ -200,6 +205,8 @@ Http_parse_request(Http_Request* req, const char* reqstr, const size_t header_le
     char* headers_last; // NULL or at body start after parsing
     ret = Http_parse_headers(&req->headers, version_end + 2, &headers_last, header_len);
     if (ret != HTTP_OK) return ret;
+
+    if (req->method == HTTP_METHOD_GET) return HTTP_OK;
 
     if(hm_exists(&req->headers, "Content-Type")) {
         if (strcmp(hm_get(&req->headers, "Content-Type"), "application/json") == 0) {
@@ -269,6 +276,7 @@ Http_parse_headers(Http_Headers* headers, const char* headers_str, char** header
 bool
 Http_validate_path(const char* path)
 {
+    (void)path;
     return true;
 }
 
@@ -306,6 +314,11 @@ Http_strmethod(Http_Method method)
         return "PATCH";
     case HTTP_METHOD_DELETE:
         return "DELETE";
+    case HTTP_METHOD_HEAD:
+        return "HEAD";
+    case HTTP_METHOD_OPTIONS:
+        return "OPTIONS";
+    case HTTP_METHOD_INVALID:
     default:
         return NULL;
     }
@@ -315,20 +328,24 @@ char*
 Http_strstatus(Http_Status status)
 {
     switch(status) {
-        case(HTTP_STATUS_OK):
+        case HTTP_STATUS_OK:
             return "Success";
-        case(HTTP_STATUS_NO_CONTENT):
+        case HTTP_STATUS_NO_CONTENT:
             return "No Content";
-        case(HTTP_STATUS_BAD_REQUEST):
+        case HTTP_STATUS_BAD_REQUEST:
             return "Bad Request";
-        case(HTTP_STATUS_UNAUTHORIZED):
+        case HTTP_STATUS_UNAUTHORIZED:
             return "Unauthorized";
-        case(HTTP_STATUS_FORBIDDEN):
+        case HTTP_STATUS_FORBIDDEN:
             return "Forbidden";
-        case(HTTP_STATUS_NOT_FOUND):
+        case HTTP_STATUS_NOT_FOUND:
             return "Not Found";
-        case(HTTP_STATUS_INTERNAL_SERVER_ERROR):
+        case HTTP_STATUS_NOT_ALLOWED:
+            return "Not Allowed";
+        case HTTP_STATUS_INTERNAL_SERVER_ERROR :
             return "Internal Server Error";
+        case HTTP_STATUS_NOT_IMPLEMENTED:
+            return "Not Implemented";
         default:
             return NULL;
     }
@@ -339,6 +356,33 @@ Http_free_request(Http_Request* req)
 {
     hm_free(&req->headers);
     if (req->path != NULL) free(req->path);
+}
+
+const char*
+Http_get_status_header(Http_Status status)
+{
+    switch (status) {
+        case HTTP_STATUS_OK:
+            return HTTP_HEADER_OK;
+        case HTTP_STATUS_NO_CONTENT:
+            return HTTP_HEADER_NO_CONTENT;
+        case HTTP_STATUS_BAD_REQUEST:
+            return HTTP_HEADER_BAD_REQUEST;
+        case HTTP_STATUS_UNAUTHORIZED:
+            return HTTP_HEADER_UNAUTHORIZED;
+        case HTTP_STATUS_FORBIDDEN:
+            return HTTP_HEADER_FORBIDDEN;
+        case HTTP_STATUS_NOT_FOUND:
+            return HTTP_HEADER_NOT_FOUND;
+        case HTTP_STATUS_NOT_ALLOWED:
+            return HTTP_HEADER_NOT_ALLOWED;
+        case HTTP_STATUS_INTERNAL_SERVER_ERROR:
+            return HTTP_HEADER_INTERNAL_SERVER_ERROR;
+        case HTTP_STATUS_NOT_IMPLEMENTED:
+            return HTTP_HEADER_NOT_IMPLEMENTED;
+        default:
+            return NULL;
+    }
 }
 
 #endif //HTTP_IMPLEMENTATION

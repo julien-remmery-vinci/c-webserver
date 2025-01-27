@@ -1,7 +1,7 @@
 #ifndef WEBSERVER_H
 #define WEBSERVER_H
 
-#include <sys/time.h>
+#include "http.h"
 #include <stddef.h>
 #include <semaphore.h>
 
@@ -40,89 +40,17 @@ Ws_load_config_from_file(const char* path);
 void*
 Ws_config_get_value(Ws_Config* config, const char* key);
 
-#define HTTP_VERSION "HTTP/1.1"
-
-#define HTTP_HEADER_OK "HTTP/1.1 200 OK\n\n"
-#define HTTP_HEADER_NO_CONTENT "HTTP/1.1 204 No Content\n\n"
-#define HTTP_HEADER_BAD_REQUEST "HTTP/1.1 400 Bad Request\n\n"
-#define HTTP_HEADER_UNAUTHORIZED "HTTP/1.1 401 Unauthorized\n\n"
-#define HTTP_HEADER_FORBIDDEN "HTTP/1.1 403 Forbidden\n\n"
-#define HTTP_HEADER_NOT_FOUND "HTTP/1.1 404 Not Found\n\n"
-#define HTTP_HEADER_NOT_ALLOWED "HTTP/1.1 405 Not Allowed\n\n"
-#define HTTP_HEADER_INTERNAL_SERVER_ERROR "HTTP/1.1 500 Internal Server Error\n\n"
-#define HTTP_HEADER_NOT_IMPLEMENTED "HTTP/1.1 501 Not Implemented\n\n"
-#define HTTP_HEADER_MALFORMED "HTTP/1.1 400 Bad Request\n\nMalformed headers in the request."
-
-#define HTTP_RES_OK \
-    (Response) { .status = HTTP_OK, .header = HTTP_HEADER_OK }
-#define HTTP_RES_HEADER_MALFORMED \
-    (Response) { .status = HTTP_BAD_REQUEST, .header = HTTP_HEADER_MALFORMED }
-#define HTTP_RES_NOT_FOUND \
-    (Response) { .status = HTTP_NOT_FOUND, .header = HTTP_HEADER_NOT_FOUND }
-#define HTTP_RES_INTERNAL_SERVER_ERROR \
-    (Response) { .status = HTTP_INTERNAL_SERVER_ERROR, .header = HTTP_HEADER_INTERNAL_SERVER_ERROR }
-#define HTTP_RES_NOT_IMPLEMENTED \
-    (Response) { .status = HTTP_NOT_IMPLEMENTED, .header = HTTP_HEADER_NOT_IMPLEMENTED }
-
-enum HttpMethod {
-    HTTP_GET,
-    HTTP_POST,
-    HTTP_PUT,
-    HTTP_PATCH,
-    HTTP_DELETE,
-    HTTP_HEAD,
-    HTTP_OPTIONS,
-    HTTP_NO_METHOD
-};
-
-enum HttpStatus {
-    HTTP_OK = 200,
-    HTTP_NO_CONTENT = 204,
-    HTTP_BAD_REQUEST = 400,
-    HTTP_UNAUTHORIZED = 401,
-    HTTP_FORBIDDEN = 403,
-    HTTP_NOT_FOUND = 404,
-    HTTP_NOT_ALLOWED = 405,
-    HTTP_INTERNAL_SERVER_ERROR = 500,
-    HTTP_NOT_IMPLEMENTED = 501
-};
-
-#define HTTP_MALFORMED_ERROR -1
-#define HTTP_NOT_IMPLEMENTED_ERROR -2
-
-/**
- * Response struct conataining the informations about a Response
- */
-typedef struct Response {
-    enum HttpStatus status;
-    char* header;
-} Response;
-
-/**
- * Request struct conataining the informations about a Request
- */
-typedef struct Request {
-    int client_fd;
-    char* client_ip;
-    int client_port;
-    enum HttpMethod method;
-    char* path;
-    char* http_version;
-    struct timeval start;
-    struct timeval end;
-    double request_timing;
-    Response response;
-} Request;
-
 typedef struct Route Route;
+typedef int (*Ws_Handler)(Route* route, Http_Request* request, Http_Response* res);
 
 /**
  * Route struct conataining the informations about a Route
  */
 struct Route {
-    enum HttpMethod method;
+    Http_Method method;
     char* path;
-    int (*handler)(Route* route, Request* request);
+    Ws_Handler handler;
+    Ws_Handler middleware; // Maybe make it so we can have multiple midllewares
     char *file_buffer;
     size_t file_size;
 };
@@ -141,8 +69,10 @@ void
 Ws_router_handle(
     Ws_Router* router, 
     char* path, 
-    enum HttpMethod method, 
-    int (*handler)(Route* route, Request* request));
+    Http_Method method, 
+    Ws_Handler handler,
+    Ws_Handler middleware
+);
 
 /**
  * Server struct containing all informations about the server
@@ -153,7 +83,6 @@ typedef struct Ws_Server {
     sem_t* connection_count_sem;
     int sock_fd;
     int max_connections;
-    bool requests_logging;
     Ws_Config config;
     Ws_Router router;
 } Ws_Server;
@@ -165,22 +94,19 @@ Ws_Server
 Ws_server_setup(Ws_Config config, Ws_Router router);
 
 /**
- * Enable requests logging on the server
- */
-bool
-Ws_server_enable_logging(Ws_Server* server);
-
-/**
- * Disable requests logging on the server
- */
-bool
-Ws_server_disable_logging(Ws_Server* server);
-
-/**
  * Run the server
  */
 int
 Ws_run_server(Ws_Server* server);
+
+/**
+ * Send an http response
+ */
+int
+Ws_send_response(int fd, Http_Response* res);
+
+int
+Ws_send_response_with_file(int fd, Http_Response* res, const char* filepath);
 
 #endif // WEBSERVER_H
 
@@ -188,6 +114,8 @@ Ws_run_server(Ws_Server* server);
  * Web server implementation
  */
 #ifdef WEBSERVER_IMPLEMENTATION
+
+#define HTTP_IMPLEMENTATION
 
 #include <ctype.h>
 #include <string.h>
@@ -207,19 +135,6 @@ Ws_run_server(Ws_Server* server);
 #include <semaphore.h>
 #include <sys/ipc.h>
 #include <sys/shm.h>
-#include <arpa/inet.h>
-
-/**
- * Send an http response
- */
-int
-Ws_send_response(int fd, Response* res);
-
-/**
- * Send a file to a client
- */
-int
-Ws_send_file(Request* req, char* filepath);
 
 // Handles the stopping of the server when SIGINT is encountered, through 'sigint_handler()'
 volatile sig_atomic_t stop_server = 0;
@@ -339,18 +254,10 @@ Ws_config_get_value(Ws_Config* config, const char* key)
  * Default server root route
  */
 int
-default_server_route(Route* route, Request* req)
+default_server_route(Route* route, Http_Request* req, Http_Response* res)
 {
-    req->response = HTTP_RES_OK;
-    Ws_send_response(req->client_fd, &req->response);
-
-    if (route->file_buffer != NULL && route->file_size > 0) {
-        if (send(req->client_fd, route->file_buffer, route->file_size, 0) == -1) {
-            ERROR("Error sending file to : %d", req->client_fd);
-        }
-        return 0;
-    }
-    Ws_send_file(req, "static/default.html");
+    (void)route;
+    Ws_send_response_with_file(req->client_fd, res, "static/default.html");
     return 0;
 }
 
@@ -362,7 +269,7 @@ Ws_default_router()
 {
     Ws_Router router = {0};
     router.routes = hm_create(1);
-    Ws_router_handle(&router, "/", HTTP_GET, default_server_route);
+    Ws_router_handle(&router, "/", HTTP_METHOD_GET, default_server_route, NULL);
     return router;
 }
 
@@ -459,93 +366,12 @@ Ws_server_setup(Ws_Config config, Ws_Router router)
     if(max_conn.error) max_conn.int_val = WS_CONFIG_DEFAULT_MAX_CONNECTIONS;
 
     server.max_connections = max_conn.int_val;
-    server.requests_logging = false;
+
     Ws_handle_signal(SIGINT, sigint_handler);
 
     Ws_init_server_socket(&server);
     INFO("Server setup done");
     return server;
-}
-
-bool
-Ws_server_enable_logging(Ws_Server* server)
-{
-  if (server == NULL) return false;
-  server->requests_logging = true;
-  return true;
-}
-
-bool
-Ws_server_disable_logging(Ws_Server* server)
-{
-  if (server == NULL) return false;
-  server->requests_logging = false;
-  return true;
-}
-
-/**
- * Returns the enum equivalent of an http method
- *  HTTP_NO_METHOD if invalid
- */
-enum HttpMethod 
-get_http_method(char* str)
-{
-    if(!strcmp(str, "GET")) return HTTP_GET;
-    if(!strcmp(str, "POST")) return HTTP_POST;
-    if(!strcmp(str, "PUT")) return HTTP_PUT;
-    if(!strcmp(str, "PATCH")) return HTTP_PATCH;
-    if(!strcmp(str, "DELETE")) return HTTP_DELETE;
-    if(!strcmp(str, "HEAD")) return HTTP_HEAD;
-    if(!strcmp(str, "OPTIONS")) return HTTP_OPTIONS;
-    return HTTP_NO_METHOD;
-}
-
-/**
- * Returns the str equivalent of an http method
- */
-char*
-strmethod(enum HttpMethod method)
-{
-    switch (method) {
-    case HTTP_GET:
-        return "GET";
-    case HTTP_POST:
-        return "POST";
-    case HTTP_PUT:
-        return "PUT";
-    case HTTP_PATCH:
-        return "PATCH";
-    case HTTP_DELETE:
-        return "DELETE";
-    default:
-        return NULL;
-    }
-}
-
-/**
- * Returns the str equivalent of an http status
- */
-char*
-strstatus(enum HttpStatus status)
-{
-    switch(status) {
-        case(HTTP_OK):
-            return "Success";
-        case(HTTP_NO_CONTENT):
-            return "No Content";
-        case(HTTP_BAD_REQUEST):
-            return "Bad Request";
-        case(HTTP_UNAUTHORIZED):
-            return "Unauthorized";
-        case(HTTP_FORBIDDEN):
-            return "Forbidden";
-        case(HTTP_NOT_FOUND):
-            return "Not Found";
-        case(HTTP_INTERNAL_SERVER_ERROR):
-            return "Internal Server Error";
-        default:
-            return NULL;
-    }
 }
 
 /**
@@ -560,34 +386,49 @@ Ws_read_request(int fd, char* buf)
 }
 
 int
-Ws_send_response(int fd, Response* res)
+Ws_send_response(int fd, Http_Response* res)
 {
-    write(fd, res->header, strlen(res->header));
+    const char* res_header = Http_get_status_header(res->status);
+
+    StringBuilder builder = {0};
+    Ju_str_append_null(&builder, res_header, "\r\n");
+
+    write(fd, builder.string, builder.count);
+
+    Ju_str_free(&builder);
     return 0;
 }
 
-/**
- * Parse an http request
- */
 int
-Ws_parse_request(Request* req, char* reqstr)
+Ws_send_response_with_file(int fd, Http_Response* res, const char* filepath)
 {
-    char* method_str = strtok(reqstr, " \r\n");
-    char* path = strtok(NULL, " \r\n");
-    char* version = strtok(NULL, " \r\n");
+    int filefd = open(filepath, O_RDONLY);
+    if(filefd == -1) {
+        // File paths are specified by the developper
+        // And therefore should exist
+        // We are not letting users say which file they want
+        res->status = HTTP_STATUS_INTERNAL_SERVER_ERROR;
+        Ws_send_response(fd, res);
+        return 0;
+    }
+    Ws_send_response(fd, res);
 
-    if (method_str == NULL || path == NULL || version == NULL) {
-        return HTTP_MALFORMED_ERROR;
+    struct stat stat_buf;
+    fstat(filefd, &stat_buf);
+
+    StringBuilder builder = {0};
+    Ju_str_append_fmt_null(&builder, "Content-Type: text/html\r\nContent-Length: %ld\r\nConnection: close\r\n\r\n", stat_buf.st_size);
+    write(fd, builder.string, builder.count);
+
+    off_t offset = 0;
+    ssize_t bytes_sent = sendfile(fd, filefd, &offset, stat_buf.st_size);
+    if (bytes_sent == -1) {
+        perror("sendfile");
+        return -1;
     }
 
-    req->method = get_http_method(method_str);
-    if (req->method == HTTP_NO_METHOD) {
-        WARN("Unhandled HTTP Method received: %d", req->method);
-        return HTTP_NOT_IMPLEMENTED_ERROR;
-    }
-
-    req->path = path;
-    req->http_version = version;
+    close(filefd);
+    Ju_str_free(&builder);
     return 0;
 }
 
@@ -595,44 +436,16 @@ Ws_parse_request(Request* req, char* reqstr)
  * Log a request: time in ms, status, http method, path
  */
 void
-Ws_log_request(Request* req) 
+Ws_log_request(Http_Request* req, Http_Response* res) 
 {
-    INFO("%s %8.3f ms %-3d %-6s %s", req->client_ip, req->request_timing, req->response.status, strmethod(req->method), req->path);
-}
-
-int
-Ws_send_file(Request* req, char* filepath)
-{
-    int filefd = open(filepath, O_RDONLY);
-    if(filefd == -1) {
-        Ws_send_response(req->client_fd, &HTTP_RES_INTERNAL_SERVER_ERROR);
-        return 0;
-    }
-    off_t offset = 0;
-    struct stat stat_buf;
-    fstat(filefd, &stat_buf);
-
-    ssize_t bytes_sent = sendfile(req->client_fd, filefd, &offset, stat_buf.st_size);
-    if (bytes_sent == -1) {
-        perror("sendfile");
-        return -1;
-    }
-    close(filefd);
-    return 0;
+    INFO("%8.3f ms %-3d %-6s %s", req->request_timing, res->status, Http_strmethod(req->method), req->path);
 }
 
 Route*
-Ws_create_route(
-    char* path, 
-    enum HttpMethod method, 
-    int (*handler)(Route* route, Request* request)
-)
+Ws_create_route()
 {
     Route* route = malloc(sizeof(Route));
     CHECK(route != NULL, "route alloc error");
-    route->path = path;
-    route->method = method;
-    route->handler = handler;
     return route;
 }
 
@@ -640,18 +453,23 @@ void
 Ws_router_handle(
     Ws_Router* router, 
     char* path, 
-    enum HttpMethod method, 
-    int (*handler)(Route* route, Request* request)
+    Http_Method method, 
+    Ws_Handler handler,
+    Ws_Handler middleware
 )
 {
     CHECK(path != NULL, "add handler null path");
-    CHECK(method >= 0 && method < HTTP_NO_METHOD, "add handler wrong method");
+    CHECK(method >= 0 && method < HTTP_METHOD_INVALID, "add handler wrong method");
     
     Route* route = Ws_create_route(path, method, handler);
+    route->path = path;
+    route->method = method;
+    route->handler = handler;
+    route->middleware = middleware;
 
     StringBuilder builder = {0};
-    Ju_str_append_null(&builder, strmethod(method), path);
-    hm_put(&router->routes, builder.items, route);
+    Ju_str_append_null(&builder, Http_strmethod(method), path);
+    hm_put(&router->routes, builder.string, route);
     Ju_str_free(&builder);
 }
 
@@ -659,31 +477,35 @@ Ws_router_handle(
  * Handle a request on an unsupported route
  */
 void
-handle_not_found_request(Request* request)
+handle_not_found_request(Http_Request* request, Http_Response* res)
 {
-    request->response = HTTP_RES_NOT_FOUND;
-    Ws_send_response(request->client_fd, &request->response);
-    Ws_send_file(request, "static/not_found.html");
+    res->status = HTTP_STATUS_NOT_FOUND;
+    Ws_send_response_with_file(request->client_fd, res, "static/not_found.html");
 }
 
 /**
  * Handle a request
  */
 int
-Ws_handle_request(Ws_Router* router, Request* request)
+Ws_handle_request(Ws_Router* router, Http_Request* req, Http_Response* res)
 {
     StringBuilder builder = {0};
-    Ju_str_append_null(&builder, strmethod(request->method), request->path);
-    Route* route = hm_get(&router->routes, builder.items);
+    Ju_str_append_null(&builder, Http_strmethod(req->method), req->path);
+    Route* route = hm_get(&router->routes, builder.string);
     Ju_str_free(&builder);
     if (route == NULL)
     {
-        handle_not_found_request(request);
+        handle_not_found_request(req, res);
         return 0;
     }
     else
     {
-        return route->handler(route, request);
+        if (route->middleware != NULL) {
+            if (route->middleware(route, req, res)) {
+                return 0;
+            }
+        }
+        return route->handler(route, req, res);
     }
 }
 
@@ -691,7 +513,7 @@ Ws_handle_request(Ws_Router* router, Request* request)
  * Time the start of a request
  */
 void
-Ws_start_request(Request* request)
+Ws_start_request(Http_Request* request)
 {
     gettimeofday(&request->start, NULL);
 }
@@ -700,7 +522,7 @@ Ws_start_request(Request* request)
  * Time the end of a request
  */
 void
-Ws_end_request(Request* request)
+Ws_end_request(Http_Request* request)
 {
     gettimeofday(&request->end, NULL);
     request->request_timing =
@@ -708,38 +530,11 @@ Ws_end_request(Request* request)
 }
 
 int
-Ws_resolve_client(Request* request)
-{
-    struct sockaddr_in addr;
-    socklen_t addrlen = sizeof addr;
-    memset(&addr, 0, sizeof addr);
-    int ret = getpeername(request->client_fd, (struct sockaddr*)&addr, &addrlen);
-    if (ret == -1) 
-    {
-        ERROR("Ws_resolve_client : etpeername");
-        return -1;
-    }
-    char ip[INET_ADDRSTRLEN];
-    request->client_port = ntohs(addr.sin_port);
-    request->client_ip = (char*)malloc(INET_ADDRSTRLEN * sizeof(char));
-    if (request->client_ip == NULL) 
-    {
-        ERROR("Ws_resolve_client : client ip malloc error");
-        return -1;
-    }
-
-    if (inet_ntop(AF_INET, &addr.sin_addr, request->client_ip, sizeof(ip)) == NULL)
-    {
-        ERROR("Ws_resolve_client : inet_ntop");
-        return -1;
-    }
-    return 0;
-}
-
-int
 Ws_run_server(Ws_Server* server)
 {
     int ret;
+    // size_t max_request_len = Ws_config_get_value(&server->config, "max_req_size");
+
     INFO("Server ready, STOP with CTRL+C");
 
     while(!stop_server) {
@@ -753,13 +548,13 @@ Ws_run_server(Ws_Server* server)
             continue;
         }
 
-        Request request = {
+        Http_Request req = {
             .client_fd = client_fd,
-            .method = HTTP_NO_METHOD
+            .method = HTTP_METHOD_INVALID
         };
-        Ws_resolve_client(&request);
+        Http_Response res = {0};
 
-        Ws_start_request(&request);
+        Ws_start_request(&req);
 
         sem_wait(server->connection_count_sem);
         (*server->connection_count)++;
@@ -770,22 +565,22 @@ Ws_run_server(Ws_Server* server)
             char buf[WS_BUFFER_MAX_LENGHT+1];
             Ws_read_request(client_fd, buf);
 
-            ret = Ws_parse_request(&request, buf);
+            ret = Http_parse_request(&req, buf, WS_BUFFER_MAX_LENGHT+1);
             
-            if(ret == HTTP_MALFORMED_ERROR) {
-                Ws_send_response(request.client_fd, &HTTP_RES_HEADER_MALFORMED);
-            } else if (ret == HTTP_NOT_IMPLEMENTED_ERROR) {
-                Ws_send_response(request.client_fd, &HTTP_RES_NOT_IMPLEMENTED);
+            if(ret == HTTP_ERR_MALFORMED_REQ) {
+                res.status = HTTP_STATUS_BAD_REQUEST;
+                res.content = "Malformed header in the request";
+                Ws_send_response(req.client_fd, &res);
             } else {
-                Ws_handle_request(&server->router, &request);
+                Ws_handle_request(&server->router, &req, &res);
             }
 
             // Close connection
+            shutdown(client_fd, SHUT_RDWR);
             close(client_fd);
 
-            Ws_end_request(&request);
-
-            if (server->requests_logging) Ws_log_request(&request);
+            Ws_end_request(&req);
+            Ws_log_request(&req, &res);
 
             sem_wait(server->connection_count_sem);
             (*server->connection_count)--;
