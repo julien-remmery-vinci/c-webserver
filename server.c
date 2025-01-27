@@ -1,74 +1,56 @@
 #define DATA_STRUCTURES_IMPLEMENTATION
-#include "data_structures.h"
 #define JUTILS_IMPLEMENTATION
-#include "jutils.h"
+#define HTTP_IMPLEMENTATION
 #define WEBSERVER_IMPLEMENTATION
+#define JACON_IMPLEMENTATION
+#include "jutils.h"
 #include "webserver.h"
 
 int
-route_get_root(Route* route, Request* req)
-{
-    req->response = HTTP_RES_OK;
-    Ws_send_response(req->client_fd, &req->response);
-
-    if (route->file_buffer != NULL && route->file_size > 0) {
-        if (send(req->client_fd, route->file_buffer, route->file_size, 0) == -1) {
-            perror("Error sending file");
-        }
-        return 0;
-    }
-    Ws_send_file(req, "static/index.html");
-    return 0;
-}
-
-int
-route_get_indexjs(Route* route, Request* req)
-{
-    req->response = HTTP_RES_OK;
-    Ws_send_response(req->client_fd, &req->response);
-
-    if (route->file_buffer != NULL && route->file_size > 0) {
-        if (send(req->client_fd, route->file_buffer, route->file_size, 0) == -1) {
-            perror("Error sending file");
-        }
-        return 0;
-    }
-    Ws_send_file(req, "static/index.js");
-    return 0;
-}
-
-int
-route_get_indexcss(Route* route, Request* req)
-{
-    req->response = HTTP_RES_OK;
-    Ws_send_response(req->client_fd, &req->response);
-
-    if (route->file_buffer != NULL && route->file_size > 0) {
-        if (send(req->client_fd, route->file_buffer, route->file_size, 0) == -1) {
-            perror("Error sending file");
-        }
-        return 0;
-    }
-    Ws_send_file(req, "static/index.css");
-    return 0;
-}
-
-int
-route_get_favicon(Route* route, Request* req)
+route_get_root(Route* route, Http_Request* req, Http_Response* res)
 {
     (void)route;
-    req->response = HTTP_RES_NOT_FOUND;
-    Ws_send_response(req->client_fd, &req->response);
+    res->status = HTTP_STATUS_OK;
+    Ws_send_response_with_file(req->client_fd, res, "static/index.html");
     return 0;
 }
 
 int
-route_get_users(Route* route, Request* req)
+route_get_favicon(Route* route, Http_Request* req, Http_Response* res)
 {
     (void)route;
-    req->response = HTTP_RES_NOT_IMPLEMENTED;
-    Ws_send_response(req->client_fd, &req->response);
+    res->status = HTTP_STATUS_NOT_FOUND;
+    Ws_send_response(req->client_fd, res);
     return 0;
+}
+
+int
+route_get_users(Route* route, Http_Request* req, Http_Response* res)
+{
+    (void)route;
+    res->status = HTTP_STATUS_NOT_IMPLEMENTED;
+    Ws_send_response(req->client_fd, res);
+    return 0;
+}
+
+int
+authorized(Route* route, Http_Request* req, Http_Response* res)
+{
+    (void)route;
+    (void)req;
+    (void)res;
+    return 0;
+}
+
+int
+unauthorized(Route* route, Http_Request* req, Http_Response* res)
+{
+    (void)route;
+    (void)req;
+    (void)res;
+    res->status = HTTP_STATUS_UNAUTHORIZED;
+    Ws_send_response(req->client_fd, res);
+    return 1;
 }
 
 Ws_Router
@@ -78,10 +60,9 @@ setup_router()
     // Initialize the map to store routes with a size of 10
     router.routes = hm_create(HM_DEFAULT_SIZE);
 
-    Ws_router_handle(&router, "/", HTTP_GET, route_get_root);
-    Ws_router_handle(&router, "/index.js", HTTP_GET, route_get_indexjs);
-    Ws_router_handle(&router, "/index.css", HTTP_GET, route_get_indexcss);
-    Ws_router_handle(&router, "/favicon.ico", HTTP_GET, route_get_favicon);
+    Ws_router_handle(&router, "/", HTTP_METHOD_GET, route_get_root, NULL);
+    Ws_router_handle(&router, "/favicon.ico", HTTP_METHOD_GET, route_get_favicon, NULL);
+    Ws_router_handle(&router, "/users", HTTP_METHOD_GET, route_get_users, authorized);
     return router;
 }
 
