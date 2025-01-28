@@ -1,8 +1,5 @@
-/**
- * File from: https://github.com/julien-remmery-vinci/cds/blob/main/header_only_ds/data_structures.h
- */
-#ifndef DATA_STRUCTURES_H
-#define DATA_STRUCTURES_H
+#ifndef HASHMAP_H
+#define HASHMAP_H
 
 #include <stddef.h>
 #include <stdbool.h>
@@ -80,9 +77,9 @@ hm_isempty(HashMap map);
 bool
 hm_exists(HashMap* map, const  char* key);
 
-#endif // DATA_STRUCTURES_H
+#endif // HASHMAP_H
 
-#ifdef DATA_STRUCTURES_IMPLEMENTATION
+#ifdef HASHMAP_IMPLEMENTATION
 
 #include <stdio.h>
 #include <string.h>
@@ -299,4 +296,4 @@ hm_exists(HashMap* map, const  char* key)
     return map->entries[index] != NULL;
 }
 
-#endif
+#endif // HASHMAP_IMPLEMENTATION

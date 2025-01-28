@@ -3,6 +3,7 @@
 
 #include <stddef.h>
 #include <stdbool.h>
+#include <string.h>
 
 // Error codes
 typedef enum {
@@ -178,6 +179,12 @@ Jacon_Error
 Jacon_validate_input(Jacon_Tokenizer* tokenizer);
 
 /**
+ * Append a node to another node's childs
+ */
+Jacon_Error
+Jacon_append_child(Jacon_Node* node, Jacon_Node* child);
+
+/**
  * Parse a Json string input into a queryable object
  */
 Jacon_Error
@@ -188,6 +195,12 @@ Jacon_deserialize(Jacon_content* content, const char* str);
  */
 Jacon_Error
 Jacon_serialize(Jacon_Node* node, char** str);
+
+/**
+ * Parse a node into its unformatted (compact) Json representation
+ */
+Jacon_Error
+Jacon_serialize_unformatted(Jacon_Node* node, char** str);
 
 /**
  * Duplicate a node
@@ -201,12 +214,83 @@ Jacon_duplicate_node(const Jacon_Node* node);
 void
 Jacon_free_node(Jacon_Node* node);
 
+// Used to create a named node
+// Please use these if you plan to add the node to an object
+#define Jacon_string_prop(node_name, node_value) (Jacon_Node){ \
+    .name = strdup(node_name), \
+    .type = JACON_VALUE_STRING , \
+    .value.string_val = strdup(node_value) }
+
+#define Jacon_int_prop(node_name, node_value) (Jacon_Node){ \
+    .name = strdup(node_name), \
+    .type = JACON_VALUE_INT , \
+    .value.int_val = node_value }
+
+#define Jacon_float_prop(node_name, node_value) (Jacon_Node){ \
+    .name = strdup(node_name), \
+    .type = JACON_VALUE_FLOAT , \
+    .value.float_val = node_value }
+
+#define Jacon_double_prop(node_name, node_value) (Jacon_Node){ \
+    .name = strdup(node_name), \
+    .type = JACON_VALUE_DOUBLE , \
+    .value.double_val = node_value }
+
+#define Jacon_boolean_prop(node_name, node_value) (Jacon_Node){ \
+    .name = strdup(node_name), \
+    .type = JACON_VALUE_BOOLEAN , \
+    .value.bool_val = node_value }
+
+#define Jacon_null_prop(node_name) (Jacon_Node){ \
+    .name = strdup(node_name), \
+    .type = JACON_VALUE_NULL }
+
+#define Jacon_array_prop(node_name) (Jacon_Node){ \
+    .name = strdup(node_name), \
+    .type = JACON_VALUE_ARRAY }
+
+#define Jacon_object_prop(node_name) (Jacon_Node){ \
+    .name = strdup(node_name), \
+    .type = JACON_VALUE_OBJECT }
+
+// Used to create a single value node
+// Should not be used to create nodes that will be put as object property
+// Please use Jacon_type_prop for that
+#define Jacon_string(node_value) (Jacon_Node){ \
+    .type = JACON_VALUE_STRING , \
+    .value.string_val = strdup(node_value) }
+
+#define Jacon_int(node_value) (Jacon_Node){ \
+    .type = JACON_VALUE_INT , \
+    .value.int_val = node_value }
+
+#define Jacon_float(node_value) (Jacon_Node){ \
+    .type = JACON_VALUE_FLOAT , \
+    .value.float_val = node_value }
+
+#define Jacon_double(node_value) (Jacon_Node){ \
+    .type = JACON_VALUE_DOUBLE , \
+    .value.double_val = node_value }
+
+#define Jacon_boolean(node_value) (Jacon_Node){ \
+    .type = JACON_VALUE_BOOLEAN , \
+    .value.bool_val = node_value }
+
+#define Jacon_null() (Jacon_Node){ \
+    .type = JACON_VALUE_NULL }
+
+#define Jacon_array() (Jacon_Node){ \
+    .type = JACON_VALUE_ARRAY }
+
+#define Jacon_object() (Jacon_Node){ \
+    .type = JACON_VALUE_OBJECT }
+
+
 #endif // JACON_H
 
 #ifdef JACON_IMPLEMENTATION
 
 #include <stdlib.h>
-#include <string.h>
 #include <stdio.h>
 #include <float.h>
 #include <math.h>
@@ -1925,12 +2009,85 @@ Jacon_node_as_str(Jacon_Node* node, Jacon_StringBuilder* builder, size_t offset,
 }
 
 Jacon_Error
+Jacon_node_as_str_unformatted(Jacon_Node* node, Jacon_StringBuilder* builder)
+{
+    int ret;
+    size_t index;
+
+    if (node->name != NULL) {
+        Jacon_str_append_null(builder, "\"", node->name, "\":");
+    }
+    
+    switch (node->type) {
+        case JACON_VALUE_OBJECT:
+            Jacon_str_append_null(builder, "{");
+            index = 0;
+            while (index < node->child_count) {
+                ret = Jacon_node_as_str_unformatted(node->childs[index], builder);
+                if (ret != JACON_OK) return ret;
+                if (++index < node->child_count) Jacon_str_append_null(builder, ",");
+            }
+            Jacon_str_append_null(builder, "}");
+            break;
+        case JACON_VALUE_ARRAY:
+            Jacon_str_append_null(builder, "[");
+            index = 0;
+            while (index < node->child_count) {
+                ret = Jacon_node_as_str_unformatted(node->childs[index], builder);
+                if (ret != JACON_OK) return ret;
+                if (++index < node->child_count) Jacon_str_append_null(builder, ",");
+            }
+            Jacon_str_append_null(builder, "]");
+            break;
+        case JACON_VALUE_STRING:
+            if (node->value.string_val == NULL) return JACON_ERR_NULL_PARAM;
+            Jacon_str_append_fmt_null(builder, "\"%s\"", node->value.string_val);
+            break;
+        case JACON_VALUE_INT:
+            Jacon_str_append_fmt_null(builder, "%d", node->value.int_val);
+            break;
+        case JACON_VALUE_FLOAT:
+            Jacon_str_append_fmt_null(builder, "%f", node->value.float_val);
+            break;
+        case JACON_VALUE_DOUBLE:
+            Jacon_str_append_fmt_null(builder, "%f", node->value.double_val);
+            break;
+        case JACON_VALUE_BOOLEAN:
+            Jacon_str_append_fmt_null(builder, "%s", 
+                node->value.bool_val ? "true" : "false");
+            break;
+        case JACON_VALUE_NULL:
+            Jacon_str_append_fmt_null(builder, "%s", "null");
+            break;
+        default:
+            break;
+    }
+    return JACON_OK;
+}
+
+Jacon_Error
 Jacon_serialize(Jacon_Node* node, char** str)
 {
     if (node == NULL) return JACON_OK;
     int ret;
     Jacon_StringBuilder builder = {0};
     ret = Jacon_node_as_str(node, &builder, 0, true);
+    if (ret != JACON_OK) {
+        Jacon_str_free(&builder);
+        return ret;
+    }
+    *str = strdup(builder.string);
+    Jacon_str_free(&builder);
+    return JACON_OK;
+}
+
+Jacon_Error
+Jacon_serialize_unformatted(Jacon_Node* node, char** str)
+{
+    if (node == NULL) return JACON_OK;
+    int ret;
+    Jacon_StringBuilder builder = {0};
+    ret = Jacon_node_as_str_unformatted(node, &builder);
     if (ret != JACON_OK) {
         Jacon_str_free(&builder);
         return ret;

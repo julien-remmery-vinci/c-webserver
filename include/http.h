@@ -1,7 +1,7 @@
 #ifndef HTTP_H
 #define HTTP_H
 
-#include "data_structures.h"
+#include "hashmap.h"
 #include "jacon.h"
 #include <sys/time.h>
 #include <string.h>
