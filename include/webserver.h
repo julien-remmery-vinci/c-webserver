@@ -1,6 +1,7 @@
 #ifndef WEBSERVER_H
 #define WEBSERVER_H
 
+#include "jutils.h"
 #include "http.h"
 #include <stddef.h>
 #include <semaphore.h>
@@ -83,6 +84,7 @@ typedef struct Ws_Server {
     sem_t* connection_count_sem;
     int sock_fd;
     int max_connections;
+    bool requests_logging;
     Ws_Config config;
     Ws_Router router;
 } Ws_Server;
@@ -92,6 +94,18 @@ typedef struct Ws_Server {
  */
 Ws_Server
 Ws_server_setup(Ws_Config config, Ws_Router router);
+
+/**
+ * Enable requests logging on the server
+ */
+bool
+Ws_server_enable_logging(Ws_Server* server);
+
+/**
+ * Disable requests logging on the server
+ */
+bool
+Ws_server_disable_logging(Ws_Server* server);
 
 /**
  * Run the server
@@ -471,6 +485,22 @@ Ws_router_handle(
     Ju_str_append_null(&builder, Http_strmethod(method), path);
     hm_put(&router->routes, builder.string, route);
     Ju_str_free(&builder);
+}
+
+bool
+Ws_server_enable_logging(Ws_Server* server)
+{
+  if (server == NULL) return false;
+  server->requests_logging = true;
+  return true;
+}
+
+bool
+Ws_server_disable_logging(Ws_Server* server)
+{
+  if (server == NULL) return false;
+  server->requests_logging = false;
+  return true;
 }
 
 /**

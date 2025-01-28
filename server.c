@@ -1,9 +1,8 @@
+#define WEBSERVER_IMPLEMENTATION
 #define HASHMAP_IMPLEMENTATION
 #define JUTILS_IMPLEMENTATION
 #define HTTP_IMPLEMENTATION
-#define WEBSERVER_IMPLEMENTATION
 #define JACON_IMPLEMENTATION
-#include "jutils.h"
 #include "webserver.h"
 
 int
@@ -12,6 +11,22 @@ route_get_root(Route* route, Http_Request* req, Http_Response* res)
     (void)route;
     res->status = HTTP_STATUS_OK;
     Ws_send_response_with_file(req->client_fd, res, "static/index.html");
+    return 0;
+}
+int
+route_get_root_js(Route* route, Http_Request* req, Http_Response* res)
+{
+    (void)route;
+    res->status = HTTP_STATUS_OK;
+    Ws_send_response_with_file(req->client_fd, res, "static/index.js");
+    return 0;
+}
+int
+route_get_root_css(Route* route, Http_Request* req, Http_Response* res)
+{
+    (void)route;
+    res->status = HTTP_STATUS_OK;
+    Ws_send_response_with_file(req->client_fd, res, "static/index.css");
     return 0;
 }
 
@@ -61,6 +76,8 @@ setup_router()
     router.routes = hm_create(HM_DEFAULT_SIZE);
 
     Ws_router_handle(&router, "/", HTTP_METHOD_GET, route_get_root, NULL);
+    Ws_router_handle(&router, "/index.js", HTTP_METHOD_GET, route_get_root_js, NULL);
+    Ws_router_handle(&router, "/index.css", HTTP_METHOD_GET, route_get_root_css, NULL);
     Ws_router_handle(&router, "/favicon.ico", HTTP_METHOD_GET, route_get_favicon, NULL);
     Ws_router_handle(&router, "/users", HTTP_METHOD_GET, route_get_users, authorized);
     return router;
