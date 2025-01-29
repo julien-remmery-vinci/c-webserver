@@ -240,6 +240,10 @@ Ws_default_config()
 Ws_Config
 Ws_load_config_from_file(const char* path)
 {
+    if (path == NULL) {
+        ERROR("Error: missing config file\nUsing default config file");
+        return Ws_default_config();
+    }
     FILE* config_file = fopen(path, "r");
     if(config_file == NULL)
     {
@@ -406,6 +410,22 @@ Ws_send_response(int fd, Http_Response* res)
 
     StringBuilder builder = {0};
     Ju_str_append_null(&builder, res_header, "\r\n");
+
+    write(fd, builder.string, builder.count);
+
+    Ju_str_free(&builder);
+    return 0;
+}
+
+int
+Ws_send_response_with_content(int fd, Http_Response* res, Http_ContentType type)
+{
+    const char* res_header = Http_get_status_header(res->status);
+    const char* res_content_type = Http_get_content_type(type);
+
+    StringBuilder builder = {0};
+    Ju_str_append_fmt_null(&builder, "%s\r\nContent-Type: %s\r\nContent-Length: %ld\r\n\r\n%s",
+        res_header, res_content_type, strlen(res->content), res->content);
 
     write(fd, builder.string, builder.count);
 
