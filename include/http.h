@@ -3,6 +3,7 @@
 
 #include "hashmap.h"
 #include "jacon.h"
+#include "jutils.h"
 #include <sys/time.h>
 #include <string.h>
 
@@ -68,7 +69,7 @@ typedef enum {
 } Http_Version;
 
 typedef enum {
-    HTTP_CONTENTTYPE_APP_JSON,
+    HTTP_CONTENTTYPE_JSON,
     HTTP_CONTENTTYPE_UNSUPPORTED,
 } Http_ContentType;
 
@@ -209,12 +210,12 @@ Http_parse_request(Http_Request* req, const char* reqstr, const size_t header_le
     if (req->method == HTTP_METHOD_GET) return HTTP_OK;
 
     if(hm_exists(&req->headers, "Content-Type")) {
-        if (strcmp(hm_get(&req->headers, "Content-Type"), "application/json") == 0) {
+        char* ctype = hm_get(&req->headers, "Content-Type");
+        if (strcmp(ctype, "application/json") == 0) {
             Jacon_init_content(&req->body);
             Jacon_deserialize(&req->body, headers_last);
         }
     }
-
     return HTTP_OK;
 }
 
@@ -380,6 +381,18 @@ Http_get_status_header(Http_Status status)
             return HTTP_HEADER_INTERNAL_SERVER_ERROR;
         case HTTP_STATUS_NOT_IMPLEMENTED:
             return HTTP_HEADER_NOT_IMPLEMENTED;
+        default:
+            return NULL;
+    }
+}
+
+const char*
+Http_get_content_type(Http_ContentType type)
+{
+    switch (type) {
+        case HTTP_CONTENTTYPE_JSON:
+            return "application/json";
+        case HTTP_CONTENTTYPE_UNSUPPORTED:
         default:
             return NULL;
     }

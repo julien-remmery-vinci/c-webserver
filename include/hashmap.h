@@ -79,7 +79,9 @@ hm_exists(HashMap* map, const  char* key);
 
 #endif // HASHMAP_H
 
+#ifndef HASHMAP_DEFINITIONS
 #ifdef HASHMAP_IMPLEMENTATION
+#define HASHMAP_DEFINITIONS 
 
 #include <stdio.h>
 #include <string.h>
@@ -171,12 +173,14 @@ hm_get(HashMap* map, const char* key)
         return NULL;
     }
 
-    unsigned long hashcode = hash((unsigned char*)key);
+    char* lower_key = Ju_toLower(key);
+
+    unsigned long hashcode = hash((unsigned char*)lower_key);
     size_t index = hashcode % map->size;
 
     HashMapEntry* current = map->entries[index];
     while (current != NULL) {
-        if (strcmp(current->key, key) == 0) {
+        if (strcmp(current->key, lower_key) == 0) {
             return current->value;
         }
         current = current->next_entry;
@@ -202,12 +206,13 @@ hm_put(HashMap* map, const char* key, void* value)
         ret = hm_resize(map);
         if (ret != HM_OK) return ret;
     }
+    char* lower_key = Ju_toLower(key);
 
     // Hashcode and bucket index
-    unsigned long hashcode = hash((unsigned char*)key);
+    unsigned long hashcode = hash((unsigned char*)lower_key);
     size_t index = hashcode % map->size;
 
-    HashMapEntry* new_entry = create_entry(key, value);
+    HashMapEntry* new_entry = create_entry(lower_key, value);
     if (new_entry == NULL) {
         return HM_ERR_MEMORY_ALLOCATION;
     }
@@ -218,7 +223,7 @@ hm_put(HashMap* map, const char* key, void* value)
     else { // Full bucket
         HashMapEntry* current = map->entries[index];
         while (current != NULL) {
-            if (strcmp(current->key, key) == 0) {
+            if (strcmp(current->key, lower_key) == 0) {
                 // Replace value if same key
                 current->value = value;
                 free(new_entry->key);
@@ -288,12 +293,23 @@ hm_isempty(HashMap map)
 }
 
 bool
-hm_exists(HashMap* map, const  char* key)
+hm_exists(HashMap* map, const char* key)
 {
-    unsigned long hashcode = hash((unsigned char*)key);
+    char* lower_key = Ju_toLower(key);
+
+    unsigned long hashcode = hash((unsigned char*)lower_key);
     size_t index = hashcode % map->size;
 
-    return map->entries[index] != NULL;
+    HashMapEntry* current = map->entries[index];
+    while (current != NULL) {
+        if (strcmp(current->key, lower_key) == 0) {
+            return true;
+        }
+        current = current->next_entry;
+    }
+
+    return false;
 }
 
 #endif // HASHMAP_IMPLEMENTATION
+#endif // HASHMAP_DEFINITIONS

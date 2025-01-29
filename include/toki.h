@@ -12,6 +12,7 @@ typedef enum {
     TOKI_OK,
     TOKI_INVALID_TOKEN,
     TOKI_ERR_NULL_PARAM,
+    TOKI_ERR_ADD_CLAIM,
 } Toki_Error;
 
 typedef Jacon_Node Toki_Claims;
@@ -101,7 +102,10 @@ Toki_token_init(Toki_Token* token, Toki_Alg algorithm)
 Toki_Error
 Toki_add_claim(Toki_Token* token, Jacon_Node* claim)
 {
-    Jacon_append_child(&token->payload, claim);
+    int ret;
+    ret = Jacon_append_child(&token->payload, claim);
+    if (ret != JACON_OK) return TOKI_ERR_ADD_CLAIM;
+    return TOKI_OK;
 }
 
 Toki_Error
@@ -146,13 +150,13 @@ Toki_validate_token(const char* token)
     if (last_dot == NULL) return false;
     *last_dot = '\0';
     char *header_payload = (char*)token;
-    const char *signature = last_dot + 1;
+    char *signature = last_dot + 1;
     unsigned char *base64_decoded;
     size_t decoded_len;
-    Base64Url_decode((const unsigned char*)signature, &decoded_len, &base64_decoded);
+    Base64Url_decode((const char*)signature, &decoded_len, &base64_decoded);
 
     char* verified_signature = hmac(header_payload, "secretkey", sha256, SHA256_BLOCK_SIZE / 8, SHA256_DIGEST_SIZE);
-    return strcmp(base64_decoded, verified_signature) == 0;
+    return strcmp((char*)base64_decoded, verified_signature) == 0;
 }
 
 bool

@@ -39,10 +39,13 @@ Ju_str_free(StringBuilder *builder);
 
 #endif // JUTILS_H
 
+#ifndef JUTILS_DEFINITIONS
 #ifdef JUTILS_IMPLEMENTATION
+#define JUTILS_DEFINITIONS
 
 #include <stdbool.h>
 #include <string.h>
+#include <ctype.h>
 
 #define Ju_str_append_null(builder, ...) Ju_str_append(builder, __VA_ARGS__, NULL)
 #define Ju_str_append_fmt_null(builder, ...) Ju_str_append_fmt(builder, __VA_ARGS__, NULL)
@@ -129,4 +132,27 @@ Ju_str_free(StringBuilder *builder)
     }
 }
 
+char*
+Ju_toLower(const char* s)
+{
+    char* dupe = strdup(s);
+    if (dupe == NULL) return NULL;
+    for (char* p = dupe; *p; ++p) {
+        *p = tolower(*p);
+    }
+    return dupe;
+}
+
+char*
+Ju_toUpper(const char* s)
+{
+    char* dupe = strdup(s);
+    if (dupe == NULL) return NULL;
+    for (char* p = dupe; *p; ++p) {
+        *p = toupper(*p);
+    }
+    return dupe;
+}
+
 #endif // JUTILS_IMPLEMENTATION
+#endif // JUTILS_DEFINITIONS

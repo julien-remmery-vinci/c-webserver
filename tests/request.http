@@ -3,5 +3,14 @@
 ### Read one user
 GET {{ baseUrl }}/
 
+### Login
+POST {{baseUrl}}/api/login
+Content-Type: application/json
+
+{
+    "login": "admin",
+    "password": "admin"
+}
+
 ### Read one user
-GET {{ baseUrl }}/test
+GET {{ baseUrl }}/dashboard
