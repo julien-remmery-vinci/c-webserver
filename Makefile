@@ -1,10 +1,22 @@
 CC = gcc
-CFLAGS = -Wall -Wextra -ggdb -Wswitch-enum -Iinclude
+CFLAGS = -Wall -Wextra -Wswitch-enum -I$(INCLUDE_DIR) $(DEBUG_FLAGS)
+DEBUG_FLAGS=-ggdb
 
-all: server
+BUILD_TARGET	=	main
+BUILD_DIR		=	build
+SRC_DIR			=	src
+INCLUDE_DIR		=	include
 
-server: server.c include/hashmap.h include/jutils.h include/webserver.h include/jacon.h include/http.h
-	$(CC) $(CFLAGS) -o server server.c
+SRC_FILES 		= 	$(wildcard $(SRC_DIR)/*.c)
+OBJ_FILES 		= 	$(patsubst $(SRC_DIR)/%.c, $(BUILD_DIR)/%.o, $(SRC_FILES))
+
+$(BUILD_TARGET): $(OBJ_FILES) 
+	$(CC) $(CFLAGS) $(OBJ_FILES) $(BUILD_TARGET).c -o $(BUILD_TARGET)
+
+$(BUILD_DIR)/%.o: $(SRC_DIR)/%.c
+	mkdir -p $(BUILD_DIR)
+	$(CC) $(CFLAGS) -c $< -o $@
 
 clean:
-	rm -f server
+	rm -rf $(BUILD_DIR)
+	rm -f $(BUILD_TARGET)

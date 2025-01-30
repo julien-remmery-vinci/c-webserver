@@ -1,9 +1,11 @@
 @baseUrl=http://localhost:3000
+@admin_token={{ admin.response.body.token }}
 
 ### Read one user
 GET {{ baseUrl }}/
 
 ### Login
+# @name admin
 POST {{baseUrl}}/api/login
 Content-Type: application/json
 
@@ -14,3 +16,4 @@ Content-Type: application/json
 
 ### Read one user
 GET {{ baseUrl }}/dashboard
+Authorization: {{admin_token}}

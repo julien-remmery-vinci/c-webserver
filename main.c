@@ -1,13 +1,4 @@
-#define WEBSERVER_IMPLEMENTATION
-#define HASHMAP_IMPLEMENTATION
-#define JUTILS_IMPLEMENTATION
-#define HTTP_IMPLEMENTATION
-#define JACON_IMPLEMENTATION
-#define SHA_IMPLEMETNATION
-#define HMAC_IMPLEMENTATION
-#define BASE64_IMPLEMENTATION
-#define TOKI_IMPLEMENTATION
-#include "webserver.h"
+#include "server.h"
 #include "toki.h"
 #include <time.h>
 
@@ -75,9 +66,8 @@ int
 route_post_login(Route* route, Http_Request* req, Http_Response* res)
 {
     (void)route;
-    int ret;
     char* login;
-    ret = Jacon_get_string_by_name(&req->body, "login", &login);
+    Jacon_get_string_by_name(&req->body, "login", &login);
     char* password;
     Jacon_get_string_by_name(&req->body, "password", &password);
 
