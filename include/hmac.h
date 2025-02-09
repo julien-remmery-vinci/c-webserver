@@ -5,7 +5,7 @@
 #include <stddef.h>
 
 char*
-hmac(char* message, char* key, 
+hmac(char* message, const char* key, 
     int (*hash)(uint8_t *output, const uint8_t *input, size_t input_len), 
     size_t blocksize, size_t output_size);
 

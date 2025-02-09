@@ -45,6 +45,7 @@ Logger_log(Logger* logger, const char* message)
     if (logger->out == NULL) return LOGGER_ERR_NULL_FILE;
     if (message == NULL) return LOGGER_ERR_NULL_MSG;
     fprintf(logger->out, "[%s] %s\n", Logger_strlevel(logger->level), message);
+    return LOGGER_OK;
 }
 
 Log_Error
@@ -58,4 +59,5 @@ Logger_log_fmt(Logger* logger, const char* fmt, ...)
     vfprintf(logger->out, fmt, args);
 
     va_end(args);
+    return LOGGER_OK;
 }

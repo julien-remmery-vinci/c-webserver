@@ -1,3 +1,4 @@
+#include "toki.h"
 #include "jwt_middleware.h"
 
 int

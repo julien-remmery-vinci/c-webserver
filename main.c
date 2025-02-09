@@ -25,6 +25,7 @@ int
 main(void)
 {
     Ws_Config config = Ws_load_config_from_file(NULL);
+    Toki_setup_env(&config);
     Ws_Router router = setup_router();
     Ws_Server server = Ws_server_setup(config, router);
     Ws_server_enable_logging(&server);

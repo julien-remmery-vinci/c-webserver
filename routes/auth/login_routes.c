@@ -14,6 +14,7 @@ validate_credentials(const char* login, const char* password)
 char*
 create_token(const char* login)
 {
+    int ret;
     Toki_Token token = {0};
     Toki_token_init(&token, TOKI_ALG_HS256);
     Jacon_Node iss = Jacon_string_prop("iss", "Conrad");
@@ -24,7 +25,10 @@ create_token(const char* login)
     Toki_add_claim(&token, &login_node);
 
     char* signed_token;
-    Toki_sign_token(&token, &signed_token);
+    ret = Toki_sign_token(&token, TOKI_ALG_HS256, getenv("toki_secret"), &signed_token);
+    if (ret == TOKI_ERR_UNSUPPORTED_ALGORITHM) {
+        return NULL;
+    }
     return signed_token;
 }
 
@@ -41,8 +45,10 @@ route_post_login(Route* route, Http_Request* req, Http_Response* res)
         res->status = HTTP_STATUS_BAD_REQUEST;
         return Ws_send_response(req->client_fd, res);
     }
+    // Do additional credentials work if needed (of course)
 
     char* signed_token = create_token(login);
+    if (signed_token == NULL) return -1;
 
     Jacon_Node json_object = Jacon_object();
     Jacon_Node token_node = Jacon_string_prop("token", signed_token);

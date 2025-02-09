@@ -7,4 +7,4 @@
 int
 authorize(Route* route, Http_Request* req, Http_Response* res);
 
-#endif JWT_MIDDLEWARE_H
+#endif // JWT_MIDDLEWARE_H

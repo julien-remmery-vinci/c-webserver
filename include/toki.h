@@ -7,12 +7,14 @@
 #include "hashmap.h"
 #include "jacon.h"
 #include "jutils.h"
+#include "server.h"
 
 typedef enum {
     TOKI_OK,
     TOKI_INVALID_TOKEN,
     TOKI_ERR_NULL_PARAM,
     TOKI_ERR_ADD_CLAIM,
+    TOKI_ERR_UNSUPPORTED_ALGORITHM,
 } Toki_Error;
 
 typedef Jacon_Node Toki_Claims;
@@ -45,7 +47,7 @@ Toki_add_claim(Toki_Token* token, Jacon_Node* claim);
  * Signs a token and sets signed_token to the signed token value
  */
 Toki_Error
-Toki_sign_token(Toki_Token* token, char** signed_token);
+Toki_sign_token(Toki_Token* token, Toki_Alg algorithm, const char* key, char** signed_token);
 
 /**
  * Verify a token
@@ -60,5 +62,8 @@ Toki_verify_token(const char* token);
  */
 void
 Toki_free_token(Toki_Token* token);
+
+void
+Toki_setup_env(Ws_Config* config);
 
 #endif // TOKI_H

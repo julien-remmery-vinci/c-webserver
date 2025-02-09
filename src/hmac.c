@@ -4,7 +4,7 @@
 #include <stdlib.h>
 
 char*
-pad(char* key, size_t blocksize)
+pad(const char* key, size_t blocksize)
 {
     char* new_key = calloc(blocksize + 1, 1);
     memcpy(new_key, key, strlen(key));
@@ -14,7 +14,7 @@ pad(char* key, size_t blocksize)
 }
 
 char*
-computeBlockSizedKey(char* key,
+computeBlockSizedKey(const char* key,
     int (*hash)(uint8_t *output, const uint8_t *input, size_t input_len),
     size_t blocksize)
 {
@@ -41,7 +41,7 @@ computeBlockSizedKey(char* key,
 }
 
 char*
-hmac(char* message, char* key,
+hmac(char* message, const char* key,
     int (*hash)(uint8_t *output, const uint8_t *input, size_t input_len), 
     size_t blocksize, size_t output_size)
 {

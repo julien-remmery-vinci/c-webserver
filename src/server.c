@@ -425,7 +425,12 @@ Ws_handle_request(Ws_Router* router, Http_Request* req, Http_Response* res)
                 return 0;
             }
         }
-        return route->handler(route, req, res);
+        if (route->handler(route, req, res) < 0) {
+            ERROR("Internal server error: %s", route->path);
+            res->status = HTTP_STATUS_INTERNAL_SERVER_ERROR;
+            return Ws_send_response(req->client_fd, res);
+        }
+        return 0;
     }
 }
 

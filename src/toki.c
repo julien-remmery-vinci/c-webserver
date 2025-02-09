@@ -1,6 +1,7 @@
 #include "toki.h"
 #include "sha.h"
 #include "hmac.h"
+#include <stdlib.h>
 
 const char*
 Toki_stralg(Toki_Alg alg)
@@ -49,8 +50,22 @@ Toki_add_claim(Toki_Token* token, Jacon_Node* claim)
 }
 
 Toki_Error
-Toki_sign_token(Toki_Token* token, char** signed_token)
+Toki_hash_params(Toki_Alg algorithm, size_t* block_size, size_t* digest_size, void** hash_func)
 {
+    switch (algorithm) {
+        case TOKI_ALG_HS256:
+            *block_size = SHA256_BLOCK_SIZE;
+            *digest_size = SHA256_DIGEST_SIZE;
+            *hash_func = sha256;
+            return TOKI_OK;
+    }
+    return TOKI_ERR_UNSUPPORTED_ALGORITHM;
+}
+
+Toki_Error
+Toki_sign_token(Toki_Token* token, Toki_Alg algorithm, const char* key, char** signed_token)
+{
+    int ret;
     char* header; 
     Jacon_serialize_unformatted(&token->header, &header);
     
@@ -65,7 +80,16 @@ Toki_sign_token(Toki_Token* token, char** signed_token)
     StringBuilder builder = {0};
 
     Ju_str_append_fmt_null(&builder, "%s.%s", base64_header, base64_payload);
-    char* signature = hmac(builder.string, "secretkey", sha256, SHA256_BLOCK_SIZE / 8, SHA256_DIGEST_SIZE);
+
+    void* hash_func;
+    size_t block_size = 0;
+    size_t digest_size = 0;
+    ret = Toki_hash_params(algorithm, &block_size, &digest_size, &hash_func);
+    if (ret == TOKI_ERR_UNSUPPORTED_ALGORITHM) {
+        return TOKI_ERR_UNSUPPORTED_ALGORITHM;
+    }
+    char* signature = hmac(builder.string, key, hash_func, block_size/ 8, digest_size);
+
     char* base64_signature;
     Base64Url_encode((const unsigned char*)signature, strlen(signature), &base64_signature);
     Ju_str_append_fmt_null(&builder, ".%s", base64_signature);
@@ -115,4 +139,15 @@ Toki_free_token(Toki_Token* token)
 {
     Jacon_free_node(&token->header);
     Jacon_free_node(&token->payload);
+}
+
+void
+Toki_setup_env(Ws_Config* config)
+{
+    char* toki_secret = hm_get(config, "toki_secret");
+    if (toki_secret == NULL) {
+        setenv("toki_secret", "default_secret", 0); // SHOULD NEVER HAPPEN BRO
+        return;
+    }
+    setenv("toki_secret", toki_secret, 0);
 }
