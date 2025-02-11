@@ -9,6 +9,10 @@ Toki_stralg(Toki_Alg alg)
     switch (alg) {
         case TOKI_ALG_HS256:
             return "HS256";
+        case TOKI_ALG_HS384:
+            return "HS384";
+        case TOKI_ALG_HS512:
+            return "HS512";
         default:
             return NULL;
     }
@@ -22,6 +26,8 @@ Toki_token_init(Toki_Token* token, Toki_Alg algorithm)
     }
 
     memset(token, 0, sizeof(Toki_Token));
+
+    token->algorithm = algorithm;
 
     const char* str_alg = Toki_stralg(algorithm);
     Jacon_Node* alg = calloc(1, sizeof(Jacon_Node));
@@ -58,12 +64,22 @@ Toki_hash_params(Toki_Alg algorithm, size_t* block_size, size_t* digest_size, vo
             *digest_size = SHA256_DIGEST_SIZE;
             *hash_func = sha256;
             return TOKI_OK;
+        case TOKI_ALG_HS384:
+            *block_size = SHA384_BLOCK_SIZE;
+            *digest_size = SHA384_DIGEST_SIZE;
+            *hash_func = sha384;
+            return TOKI_OK;
+        case TOKI_ALG_HS512:
+            *block_size = SHA512_BLOCK_SIZE;
+            *digest_size = SHA512_DIGEST_SIZE;
+            *hash_func = sha512;
+            return TOKI_OK;
     }
     return TOKI_ERR_UNSUPPORTED_ALGORITHM;
 }
 
 Toki_Error
-Toki_sign_token(Toki_Token* token, Toki_Alg algorithm, const char* key, char** signed_token)
+Toki_sign_token(Toki_Token* token, const char* key, char** signed_token)
 {
     int ret;
     char* header; 
@@ -84,10 +100,11 @@ Toki_sign_token(Toki_Token* token, Toki_Alg algorithm, const char* key, char** s
     void* hash_func;
     size_t block_size = 0;
     size_t digest_size = 0;
-    ret = Toki_hash_params(algorithm, &block_size, &digest_size, &hash_func);
+    ret = Toki_hash_params(token->algorithm, &block_size, &digest_size, &hash_func);
     if (ret == TOKI_ERR_UNSUPPORTED_ALGORITHM) {
         return TOKI_ERR_UNSUPPORTED_ALGORITHM;
     }
+    digest_size /= 8; // Size in bytes
     char* signature = hmac(builder.string, key, hash_func, block_size/ 8, digest_size);
 
     char* base64_signature;
@@ -119,7 +136,8 @@ Toki_validate_token(const char* token)
     size_t decoded_len;
     Base64Url_decode((const char*)signature, &decoded_len, &base64_decoded);
 
-    char* verified_signature = hmac(header_payload, "secretkey", sha256, SHA256_BLOCK_SIZE / 8, SHA256_DIGEST_SIZE);
+    // TODO : extract algorithm from token using Jacon to get right params
+    char* verified_signature = hmac(header_payload, "secret", sha256, SHA256_BLOCK_SIZE / 8, SHA256_DIGEST_SIZE);
     return strcmp((char*)base64_decoded, verified_signature) == 0;
 }
 

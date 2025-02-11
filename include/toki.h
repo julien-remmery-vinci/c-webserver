@@ -17,17 +17,20 @@ typedef enum {
     TOKI_ERR_UNSUPPORTED_ALGORITHM,
 } Toki_Error;
 
+typedef enum {
+    TOKI_ALG_HS256,
+    TOKI_ALG_HS384,
+    TOKI_ALG_HS512,
+} Toki_Alg;
+
 typedef Jacon_Node Toki_Claims;
 typedef Jacon_Node Toki_Payload;
 
 typedef struct Toki_Token {
     Toki_Claims header;
     Toki_Payload payload;
+    Toki_Alg algorithm;
 } Toki_Token;
-
-typedef enum {
-    TOKI_ALG_HS256, 
-} Toki_Alg;
 
 /**
  * Initializes a token with the provided algorithm
@@ -47,7 +50,7 @@ Toki_add_claim(Toki_Token* token, Jacon_Node* claim);
  * Signs a token and sets signed_token to the signed token value
  */
 Toki_Error
-Toki_sign_token(Toki_Token* token, Toki_Alg algorithm, const char* key, char** signed_token);
+Toki_sign_token(Toki_Token* token, const char* key, char** signed_token);
 
 /**
  * Verify a token
