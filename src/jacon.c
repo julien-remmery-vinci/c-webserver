@@ -1108,11 +1108,11 @@ Jacon_validate_object(Jacon_Tokenizer* tokenizer, size_t* index)
     }
     Jacon_Token* current = &tokenizer->tokens[*index];
     Jacon_Token* last = NULL;
-    Jacon_HashSet names_map = (Jacon_HashSet){
+    Jacon_HashSet names_set = (Jacon_HashSet){
         .entries = calloc(10, sizeof(Jacon_HashSetEntry*)),
         .capacity = 10
     };
-    if (names_map.entries == NULL) {
+    if (names_set.entries == NULL) {
         return JACON_ERR_MEMORY_ALLOCATION;
     }
     bool last_value = false;
@@ -1158,20 +1158,20 @@ Jacon_validate_object(Jacon_Tokenizer* tokenizer, size_t* index)
                 break;
             case JACON_TOKEN_STRING:
                 if (last == NULL) {
-                    // if (Jacon_hm_get(&names_map, tokenizer->tokens[*index].string_val)) {
-                    //     Jacon_hm_free(&names_map);
-                    //     return JACON_ERR_DUPLICATE_NAME;
-                    // }
-                    // Jacon_hm_put(&names_map, tokenizer->tokens[*index].string_val, );
+                    if (Jacon_hs_exists(&names_set, tokenizer->tokens[*index].string_val)) {
+                        Jacon_hs_free(&names_set);
+                        return JACON_ERR_DUPLICATE_NAME;
+                    }
+                    Jacon_hs_put(&names_set, tokenizer->tokens[*index].string_val);
                     last = &tokenizer->tokens[*index];
                     (*index)++;
                 }
                 else if (last->type == JACON_TOKEN_COMMA) {
-                    // if (Jacon_hm_get(&names_map, tokenizer->tokens[*index].string_val)) {
-                    //     Jacon_hm_free(&names_map);
-                    //     return JACON_ERR_DUPLICATE_NAME;
-                    // }
-                    // Jacon_hm_put(&names_map, tokenizer->tokens[*index].string_val, (void*)true);
+                    if (Jacon_hs_exists(&names_set, tokenizer->tokens[*index].string_val)) {
+                        Jacon_hs_free(&names_set);
+                        return JACON_ERR_DUPLICATE_NAME;
+                    }
+                    Jacon_hs_put(&names_set, tokenizer->tokens[*index].string_val);
                     last = &tokenizer->tokens[*index];
                     (*index)++;
                     last_value = true;
