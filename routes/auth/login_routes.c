@@ -25,7 +25,7 @@ create_token(const char* login)
     Toki_add_claim(&token, &login_node);
 
     char* signed_token;
-    ret = Toki_sign_token(&token, TOKI_ALG_HS256, getenv("toki_secret"), &signed_token);
+    ret = Toki_sign_token(&token, getenv("toki_secret"), &signed_token);
     if (ret == TOKI_ERR_UNSUPPORTED_ALGORITHM) {
         return NULL;
     }

@@ -1,4 +1,5 @@
 #include "server.h"
+#include "toki.h"
 
 #include "jwt_middleware.h"
 #include "root_routes.h"
